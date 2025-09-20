@@ -25,10 +25,10 @@ func GetDefaultKeystorePath() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		// Fallback to current directory if home directory can't be determined
-		return filepath.Join(".", ".bpg", "keystore")
+		return filepath.Join(".", ".bgp", "keystore")
 	}
 
-	return filepath.Join(homeDir, ".bpg", "keystore")
+	return filepath.Join(homeDir, ".bgp", "keystore")
 }
 
 // KeyInfo represents metadata about a key

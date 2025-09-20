@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	// Create a new bpg client with the default keystore path (~/.bpg/keystore)
+	// Create a new bpg client with the default keystore path (~/.bgp/keystore)
 	client := bpg.NewClientWithDefaultPath()
 
 	// Or create with a custom path:

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: GPL-3.0-only -->
 <!-- Copyright 2025 RH America LLC <info@rhamerica.com> -->
 
-# BPG - Cryptographic Library and CLI Tool
+# BGP - Cryptographic Library and CLI Tool
 
 A Go library and CLI tool for secure message encryption and decryption with key management.
 
@@ -38,7 +38,7 @@ A Go library and CLI tool for secure message encryption and decryption with key 
 ### As a CLI tool:
 
 ```bash
-go build -o bpg ./cmd
+go build -o bgp ./cmd
 ```
 
 ### As a library:
@@ -53,38 +53,39 @@ go get github.com/bazurto/bpg
 
 ```bash
 # Generate a key pair
-bpg keygen -name alice -email alice@example.com
+bgp keygen -name alice -email alice@example.com
 
 # Import a public key
-bpg import-key -key public.pem -name bob -email bob@example.com
+bgp import-key -key public.pem -name bob -email bob@example.com
 
 # List all keys
-bpg list-keys
-bpg list-keys -v  # verbose with key IDs
+bgp list-keys
+bgp list-keys -v  # verbose with key IDs
 
 # Encrypt a message
-bpg encrypt -to alice -message "Hello World" -from bob@bob@example.com
+bgp encrypt -to alice -message "Hello World" -from bob@example.com
 
 # Decrypt a message
-bpg decrypt < encrypted_message.json
-echo '{"encrypted":"data"}' | bpg decrypt
+bgp decrypt < encrypted_message.json
+echo '{"encrypted":"data"}' | bgp decrypt
 ```
 
 ### Global Options
 
 ```bash
 # Use custom keystore location
-bpg -keystore /path/to/keys list-keys
-bpg -keystore ./secure keygen -name user -email user@domain.com
+bgp -keystore /path/to/keys list-keys
+bgp -keystore ./secure keygen -name user -email user@domain.com
 
-# By default, keys are stored in ~/.bpg/keystore
-bpg list-keys  # Uses ~/.bpg/keystore
+# By default, keys are stored in ~/.bgp/keystore
+bgp list-keys  # Uses ~/.bgp/keystore
 ```
 
 ## Library Usage
 
-```go
-package main
+```bash
+# Build CLI tool
+go build -o crypt ./cmd
 
 import (
     "fmt"
@@ -93,7 +94,7 @@ import (
 )
 
 func main() {
-    // Create a client with default keystore path (~/.bpg/keystore)
+    // Create a client with default keystore path (~/.bgp/keystore)
     client := bpg.NewClientWithDefaultPath()
     
     // Or create a client with custom keystore path

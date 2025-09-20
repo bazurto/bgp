@@ -71,10 +71,10 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println("Usage: bpg [global-options] <command> [command-options]")
+	fmt.Println("Usage: bgp [global-options] <command> [command-options]")
 	fmt.Println()
 	fmt.Println("Global Options:")
-	fmt.Println("  -keystore <dir>  Path to keystore directory (default: ~/.bpg/keystore)")
+	fmt.Println("  -keystore <dir>  Path to keystore directory (default: ~/.bgp/keystore)")
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  encrypt    Encrypt a message")
@@ -83,12 +83,12 @@ func printUsage() {
 	fmt.Println("  import-key Import a public key")
 	fmt.Println("  list-keys  List all keys in keystore")
 	fmt.Println()
-	fmt.Println("Use 'bpg <command> -h' for command-specific help")
+	fmt.Println("Use 'bgp <command> -h' for command-specific help")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  bpg -keystore /path/to/keys encrypt -to alice -message 'Hello' -from bob@test.com")
-	fmt.Println("  bpg list-keys")
-	fmt.Println("  bpg -keystore ./mykeys keygen -name john -email john@example.com")
+	fmt.Println("  bgp -keystore /path/to/keys encrypt -to alice -message 'Hello' -from bob@test.com")
+	fmt.Println("  bgp list-keys")
+	fmt.Println("  bgp -keystore ./mykeys keygen -name john -email john@example.com")
 }
 
 func encryptCommand(keystoreDir string) {
@@ -98,14 +98,14 @@ func encryptCommand(keystoreDir string) {
 	sender := encryptFlags.String("from", "", "Sender identifier (name@email)")
 
 	encryptFlags.Usage = func() {
-		fmt.Println("Usage: bpg encrypt -to <recipient> -message <message> -from <sender>")
+		fmt.Println("Usage: bgp encrypt -to <recipient> -message <message> -from <sender>")
 		fmt.Println()
 		fmt.Println("Options:")
 		encryptFlags.PrintDefaults()
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  bpg encrypt -to john@example.com -message 'Hello World' -from myname@example.com")
-		fmt.Println("  echo 'Secret message' | bpg encrypt -to alice -from bob@company.com")
+		fmt.Println("  bgp encrypt -to john@example.com -message 'Hello World' -from myname@example.com")
+		fmt.Println("  echo 'Secret message' | bgp encrypt -to alice -from bob@company.com")
 	}
 
 	encryptFlags.Parse(os.Args[2:])
@@ -160,15 +160,15 @@ func decryptCommand(keystoreDir string) {
 	inputFile := decryptFlags.String("input", "", "Input file containing encrypted message (default: stdin)")
 
 	decryptFlags.Usage = func() {
-		fmt.Println("Usage: bpg decrypt [options]")
+		fmt.Println("Usage: bgp decrypt [options]")
 		fmt.Println()
 		fmt.Println("Options:")
 		decryptFlags.PrintDefaults()
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  bpg decrypt < encrypted_message.json")
-		fmt.Println("  bpg decrypt -input encrypted_message.json")
-		fmt.Println("  echo '{\"encrypted\":\"data\"}' | bpg decrypt")
+		fmt.Println("  bgp decrypt < encrypted_message.json")
+		fmt.Println("  bgp decrypt -input encrypted_message.json")
+		fmt.Println("  echo '{\"encrypted\":\"data\"}' | bgp decrypt")
 	}
 
 	decryptFlags.Parse(os.Args[2:])
@@ -226,14 +226,14 @@ func keygenCommand(keystoreDir string) {
 	email := keygenFlags.String("email", "", "Key owner email")
 
 	keygenFlags.Usage = func() {
-		fmt.Println("Usage: bpg keygen -name <name> -email <email> [options]")
+		fmt.Println("Usage: bgp keygen -name <name> -email <email> [options]")
 		fmt.Println()
 		fmt.Println("Options:")
 		keygenFlags.PrintDefaults()
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  bpg keygen -name john -email john@example.com")
-		fmt.Println("  bpg keygen -name alice -email alice@company.com -alg ec -curve P-384")
+		fmt.Println("  bgp keygen -name john -email john@example.com")
+		fmt.Println("  bgp keygen -name alice -email alice@company.com -alg ec -curve P-384")
 	}
 
 	keygenFlags.Parse(os.Args[2:])
@@ -275,14 +275,14 @@ func importKeyCommand(keystoreDir string) {
 	email := importFlags.String("email", "", "Email for the imported key owner")
 
 	importFlags.Usage = func() {
-		fmt.Println("Usage: bpg import-key -key <keyfile> -name <name> -email <email>")
+		fmt.Println("Usage: bgp import-key -key <keyfile> -name <name> -email <email>")
 		fmt.Println()
 		fmt.Println("Options:")
 		importFlags.PrintDefaults()
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  bpg import-key -key alice_public.pem -name alice -email alice@company.com")
-		fmt.Println("  bpg import-key -key /path/to/public.key -name john -email john@example.com")
+		fmt.Println("  bgp import-key -key alice_public.pem -name alice -email alice@company.com")
+		fmt.Println("  bgp import-key -key /path/to/public.key -name john -email john@example.com")
 	}
 
 	importFlags.Parse(os.Args[2:])
@@ -317,16 +317,16 @@ func listKeysCommand(keystoreDir string) {
 	verbose := listFlags.Bool("v", false, "Verbose output with key IDs and file paths")
 
 	listFlags.Usage = func() {
-		fmt.Println("Usage: bpg list-keys [options]")
+		fmt.Println("Usage: bgp list-keys [options]")
 		fmt.Println()
 		fmt.Println("Options:")
 		listFlags.PrintDefaults()
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  bpg list-keys                    # Show all keys")
-		fmt.Println("  bpg list-keys -private           # Show only private keys")
-		fmt.Println("  bpg list-keys -public            # Show only public keys")
-		fmt.Println("  bpg list-keys -v                 # Show verbose information")
+		fmt.Println("  bgp list-keys                    # Show all keys")
+		fmt.Println("  bgp list-keys -private           # Show only private keys")
+		fmt.Println("  bgp list-keys -public            # Show only public keys")
+		fmt.Println("  bgp list-keys -v                 # Show verbose information")
 	}
 
 	listFlags.Parse(os.Args[2:])

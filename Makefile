@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright 2025 RH America LLC <info@rhamerica.com>
 
-# Makefile for BPG - Cryptographic Library and CLI Tool
+# Makefile for BGP - Cryptographic Library and CLI Tool
 
 .PHONY: help build build-cli build-examples clean test fmt vet install deps run-example lint all
 
@@ -30,16 +30,15 @@ build: build-cli build-examples
 
 build-cli:
 	@echo "Building CLI tool..."
-	go build -o bpg ./cmd
+	go build -o bgp ./cmd
 
 build-examples:
 	@echo "Building examples..."
 	cd examples/library && go build -o library_example
 
 # Clean target
-clean:
 	@echo "Cleaning up..."
-	rm -f bpg
+	rm -f bgp
 	rm -f examples/library/library_example
 	rm -f encrypted_message.json
 	go clean
@@ -74,26 +73,24 @@ deps:
 
 # Installation target
 install:
-	@echo "Installing bpg CLI tool..."
+	@echo "Installing bgp CLI tool..."
 	go install ./cmd
 
 # Demo and example targets
-run-example: build-examples
 	@echo "Running library example..."
 	cd examples/library && ./library_example
 
-demo: build-cli
 	@echo "Running CLI demo..."
-	@echo "1. Generating keys in default keystore (~/.bpg/keystore)..."
-	@./bpg keygen -name demo -email demo@example.com
+	@echo "1. Generating keys in default keystore (~/.bgp/keystore)..."
+	@./bgp keygen -name demo -email demo@example.com
 	@echo ""
 	@echo "2. Listing keys..."
-	@./bpg list-keys
+	@./bgp list-keys
 	@echo ""
 	@echo "3. Encrypting and decrypting a message..."
-	@echo "Hello from Makefile demo!" | ./bpg encrypt -to demo -from demo@demo@example.com | ./bpg decrypt
+	@echo "Hello from Makefile demo!" | ./bgp encrypt -to demo -from demo@demo@example.com | ./bgp decrypt
 	@echo ""
-	@echo "Demo complete! Keys are stored in ~/.bpg/keystore"
+	@echo "Demo complete! Keys are stored in ~/.bgp/keystore"
 
 # Development targets
 dev-setup: deps
@@ -104,14 +101,13 @@ dev-setup: deps
 	fi
 
 # Release build (with optimizations)
-release: clean fmt vet test
 	@echo "Building release version..."
-	CGO_ENABLED=0 go build -ldflags="-w -s" -o bpg ./cmd
-	@echo "Release build complete: ./bpg"
+	CGO_ENABLED=0 go build -ldflags="-w -s" -o bgp ./cmd
+	@echo "Release build complete: ./bgp"
 
 # Quick build for development
 quick: 
-	go build -o bpg ./cmd
+	go build -o bgp ./cmd
 
 # Check everything is working
 check: build test run-example
