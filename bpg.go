@@ -13,7 +13,7 @@ type Client struct {
 	decryptor *crypto.Decryptor
 }
 
-// NewClient creates a new crypt client with the specified keystore path
+// NewClient creates a new bpg client with the specified keystore path
 func NewClient(keystorePath string) *Client {
 	ks := keystore.New(keystorePath)
 	return &Client{
@@ -21,6 +21,11 @@ func NewClient(keystorePath string) *Client {
 		encryptor: crypto.NewEncryptor(ks),
 		decryptor: crypto.NewDecryptor(ks),
 	}
+}
+
+// NewClientWithDefaultPath creates a new bpg client with the default keystore path
+func NewClientWithDefaultPath() *Client {
+	return NewClient(keystore.GetDefaultKeystorePath())
 }
 
 // Encrypt encrypts a message from sender to recipient

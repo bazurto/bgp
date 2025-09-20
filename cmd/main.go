@@ -37,7 +37,7 @@ func main() {
 
 	// Set default keystore if not provided
 	if keystoreDir == "" {
-		keystoreDir = "keystore"
+		keystoreDir = keystore.GetDefaultKeystorePath()
 	}
 
 	if len(args) < 1 {
@@ -71,7 +71,7 @@ func printUsage() {
 	fmt.Println("Usage: bpg [global-options] <command> [command-options]")
 	fmt.Println()
 	fmt.Println("Global Options:")
-	fmt.Println("  -keystore <dir>  Path to keystore directory (default: keystore)")
+	fmt.Println("  -keystore <dir>  Path to keystore directory (default: ~/.bpg/keystore)")
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  encrypt    Encrypt a message")

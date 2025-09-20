@@ -16,6 +16,18 @@ import (
 	"time"
 )
 
+// GetDefaultKeystorePath returns the default keystore path for the current user
+func GetDefaultKeystorePath() string {
+	// Get user's home directory
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		// Fallback to current directory if home directory can't be determined
+		return filepath.Join(".", ".bpg", "keystore")
+	}
+	
+	return filepath.Join(homeDir, ".bpg", "keystore")
+}
+
 // KeyInfo represents metadata about a key
 type KeyInfo struct {
 	Name      string

@@ -73,6 +73,9 @@ echo '{"encrypted":"data"}' | bpg decrypt
 # Use custom keystore location
 bpg -keystore /path/to/keys list-keys
 bpg -keystore ./secure keygen -name user -email user@domain.com
+
+# By default, keys are stored in ~/.bpg/keystore
+bpg list-keys  # Uses ~/.bpg/keystore
 ```
 
 ## Library Usage
@@ -87,8 +90,11 @@ import (
 )
 
 func main() {
-    // Create a client with keystore path
-    client := bpg.NewClient("./keystore")
+    // Create a client with default keystore path (~/.bpg/keystore)
+    client := bpg.NewClientWithDefaultPath()
+    
+    // Or create a client with custom keystore path
+    // client := bpg.NewClient("./keystore")
     
     // Generate key pairs
     err := client.GenerateKeyPair("rsa", "", "alice", "alice@example.com")

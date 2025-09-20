@@ -8,8 +8,11 @@ import (
 )
 
 func main() {
-	// Create a new bpg client with a keystore path
-	client := bpg.NewClient("./keystore")
+	// Create a new bpg client with the default keystore path (~/.bpg/keystore)
+	client := bpg.NewClientWithDefaultPath()
+
+	// Or create with a custom path:
+	// client := bpg.NewClient("./keystore")
 
 	// Example 1: Generate a key pair
 	fmt.Println("Generating key pair...")

@@ -81,7 +81,7 @@ run-example: build-examples
 
 demo: build-cli
 	@echo "Running CLI demo..."
-	@echo "1. Generating keys..."
+	@echo "1. Generating keys in default keystore (~/.bpg/keystore)..."
 	@./bpg keygen -name demo -email demo@example.com
 	@echo ""
 	@echo "2. Listing keys..."
@@ -90,7 +90,7 @@ demo: build-cli
 	@echo "3. Encrypting and decrypting a message..."
 	@echo "Hello from Makefile demo!" | ./bpg encrypt -to demo -from demo@demo@example.com | ./bpg decrypt
 	@echo ""
-	@echo "Demo complete!"
+	@echo "Demo complete! Keys are stored in ~/.bpg/keystore"
 
 # Development targets
 dev-setup: deps
