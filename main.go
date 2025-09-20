@@ -390,22 +390,50 @@ func GetAllPrivateKeys(keystoreDir string) ([]string, error) {
 }
 
 func main() {
+	// Global flags
+	var keystoreDir string
+
 	if len(os.Args) < 2 {
 		printUsage()
 		os.Exit(1)
 	}
 
-	command := os.Args[1]
+	// Parse global keystore flag if present
+	args := os.Args[1:]
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-keystore" && i+1 < len(args) {
+			keystoreDir = args[i+1]
+			// Remove the flag and its value from args
+			args = append(args[:i], args[i+2:]...)
+			break
+		}
+	}
+
+	// Set default keystore if not provided
+	if keystoreDir == "" {
+		keystoreDir = "keystore"
+	}
+
+	if len(args) < 1 {
+		printUsage()
+		os.Exit(1)
+	}
+
+	command := args[0]
+	// Update os.Args to remove the processed global flags
+	os.Args = append([]string{os.Args[0], command}, args[1:]...)
 
 	switch command {
 	case "encrypt":
-		encryptCommand()
+		encryptCommand(keystoreDir)
 	case "decrypt":
-		decryptCommand()
+		decryptCommand(keystoreDir)
 	case "keygen":
-		keygenCommand()
+		keygenCommand(keystoreDir)
 	case "import-key":
-		importKeyCommand()
+		importKeyCommand(keystoreDir)
+	case "list-keys":
+		listKeysCommand(keystoreDir)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		printUsage()
@@ -414,23 +442,31 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println("Usage: crypt <command> [options]")
+	fmt.Println("Usage: crypt [global-options] <command> [command-options]")
+	fmt.Println()
+	fmt.Println("Global Options:")
+	fmt.Println("  -keystore <dir>  Path to keystore directory (default: keystore)")
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  encrypt    Encrypt a message")
 	fmt.Println("  decrypt    Decrypt a message")
 	fmt.Println("  keygen     Generate a new key pair")
 	fmt.Println("  import-key Import a public key")
+	fmt.Println("  list-keys  List all keys in keystore")
 	fmt.Println()
 	fmt.Println("Use 'crypt <command> -h' for command-specific help")
+	fmt.Println()
+	fmt.Println("Examples:")
+	fmt.Println("  crypt -keystore /path/to/keys encrypt -to alice -message 'Hello' -from bob@test.com")
+	fmt.Println("  crypt list-keys")
+	fmt.Println("  crypt -keystore ./mykeys keygen -name john -email john@example.com")
 }
 
-func encryptCommand() {
+func encryptCommand(keystoreDir string) {
 	encryptFlags := flag.NewFlagSet("encrypt", flag.ExitOnError)
 	recipient := encryptFlags.String("to", "", "Recipient identifier (name or email)")
 	message := encryptFlags.String("message", "", "Message to encrypt")
 	sender := encryptFlags.String("from", "", "Sender identifier (name@email)")
-	keystoreDir := encryptFlags.String("keystore", "keystore", "Path to keystore directory")
 
 	encryptFlags.Usage = func() {
 		fmt.Println("Usage: crypt encrypt -to <recipient> -message <message> -from <sender>")
@@ -478,20 +514,18 @@ func encryptCommand() {
 	senderName, senderEmail := senderParts[0], senderParts[1]
 
 	// Find sender's latest private key
-	privateKeyPath, err := FindLatestPrivateKey(*keystoreDir, senderName, senderEmail)
+	privateKeyPath, err := FindLatestPrivateKey(keystoreDir, senderName, senderEmail)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error finding sender's private key: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Find recipient's public key
-	recipientKeyPath, err := FindPublicKeyByRecipient(*keystoreDir, *recipient)
+	recipientKeyPath, err := FindPublicKeyByRecipient(keystoreDir, *recipient)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error finding recipient's public key: %v\n", err)
 		os.Exit(1)
-	}
-
-	// Load keys
+	} // Load keys
 	privateKey, err := LoadPrivateKey(privateKeyPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading private key: %v\n", err)
@@ -610,9 +644,8 @@ func GenerateKeyID(publicKey interface{}) string {
 	return fmt.Sprintf("%x", hash[:8]) // First 8 bytes as hex
 }
 
-func decryptCommand() {
+func decryptCommand(keystoreDir string) {
 	decryptFlags := flag.NewFlagSet("decrypt", flag.ExitOnError)
-	keystoreDir := decryptFlags.String("keystore", "keystore", "Path to keystore directory")
 	inputFile := decryptFlags.String("input", "", "Input file containing encrypted message (default: stdin)")
 
 	decryptFlags.Usage = func() {
@@ -661,7 +694,7 @@ func decryptCommand() {
 	}
 
 	// Get all private keys to try
-	privateKeyPaths, err := GetAllPrivateKeys(*keystoreDir)
+	privateKeyPaths, err := GetAllPrivateKeys(keystoreDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error finding private keys: %v\n", err)
 		os.Exit(1)
@@ -771,13 +804,12 @@ func DecryptMessage(encryptedMsg *EncryptedMessage, privateKey interface{}) (str
 	return string(plaintext), nil
 }
 
-func keygenCommand() {
+func keygenCommand(keystoreDir string) {
 	keygenFlags := flag.NewFlagSet("keygen", flag.ExitOnError)
 	algorithm := keygenFlags.String("alg", "rsa", "Algorithm (rsa or ec)")
 	curve := keygenFlags.String("curve", "P-256", "EC curve (P-256, P-384, P-521)")
 	name := keygenFlags.String("name", "", "Key owner name")
 	email := keygenFlags.String("email", "", "Key owner email")
-	keystoreDir := keygenFlags.String("keystore", "keystore", "Path to keystore directory")
 
 	keygenFlags.Usage = func() {
 		fmt.Println("Usage: crypt keygen -name <name> -email <email> [options]")
@@ -805,15 +837,15 @@ func keygenCommand() {
 	}
 
 	// Ensure keystore directory exists
-	err = os.MkdirAll(*keystoreDir, 0755)
+	err = os.MkdirAll(keystoreDir, 0755)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating keystore directory: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Save key pair to keystore
-	privFilename := filepath.Join(*keystoreDir, fmt.Sprintf("%s_%s_%s_private.pem", *name, *email, time.Now().Format("20060102")))
-	pubFilename := filepath.Join(*keystoreDir, fmt.Sprintf("%s_%s_%s_public.pem", *name, *email, time.Now().Format("20060102")))
+	privFilename := filepath.Join(keystoreDir, fmt.Sprintf("%s_%s_%s_private.pem", *name, *email, time.Now().Format("20060102")))
+	pubFilename := filepath.Join(keystoreDir, fmt.Sprintf("%s_%s_%s_public.pem", *name, *email, time.Now().Format("20060102")))
 
 	err = ExportPrivateKey(privKey, privFilename)
 	if err != nil {
@@ -833,12 +865,11 @@ func keygenCommand() {
 	fmt.Printf("  Key ID:      %s\n", GenerateKeyID(pubKey))
 }
 
-func importKeyCommand() {
+func importKeyCommand(keystoreDir string) {
 	importFlags := flag.NewFlagSet("import-key", flag.ExitOnError)
 	keyFile := importFlags.String("key", "", "Path to public key file to import")
 	name := importFlags.String("name", "", "Name for the imported key owner")
 	email := importFlags.String("email", "", "Email for the imported key owner")
-	keystoreDir := importFlags.String("keystore", "keystore", "Path to keystore directory")
 
 	importFlags.Usage = func() {
 		fmt.Println("Usage: crypt import-key -key <keyfile> -name <name> -email <email>")
@@ -872,17 +903,15 @@ func importKeyCommand() {
 	}
 
 	// Ensure keystore directory exists
-	err = os.MkdirAll(*keystoreDir, 0755)
+	err = os.MkdirAll(keystoreDir, 0755)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating keystore directory: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Copy to keystore with standardized name
-	destFilename := filepath.Join(*keystoreDir, fmt.Sprintf("%s_%s_%s_public.pem", *name, *email, time.Now().Format("20060102")))
-
-	// Read source file
-	keyData, err := ioutil.ReadFile(*keyFile)
+	destFilename := filepath.Join(keystoreDir, fmt.Sprintf("%s_%s_%s_public.pem", *name, *email, time.Now().Format("20060102"))) // Read source file
+	keyData, err := os.ReadFile(*keyFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading key file: %v\n", err)
 		os.Exit(1)
@@ -903,4 +932,120 @@ func importKeyCommand() {
 	fmt.Printf("  File: %s\n", destFilename)
 	fmt.Printf("  Owner: %s <%s>\n", *name, *email)
 	fmt.Printf("  Key ID: %s\n", keyID)
+}
+
+func listKeysCommand(keystoreDir string) {
+	listFlags := flag.NewFlagSet("list-keys", flag.ExitOnError)
+	showPrivate := listFlags.Bool("private", false, "Show private keys")
+	showPublic := listFlags.Bool("public", false, "Show public keys")
+	verbose := listFlags.Bool("v", false, "Verbose output with key IDs and file paths")
+
+	listFlags.Usage = func() {
+		fmt.Println("Usage: crypt list-keys [options]")
+		fmt.Println()
+		fmt.Println("Options:")
+		listFlags.PrintDefaults()
+		fmt.Println()
+		fmt.Println("Examples:")
+		fmt.Println("  crypt list-keys                    # Show all keys")
+		fmt.Println("  crypt list-keys -private           # Show only private keys")
+		fmt.Println("  crypt list-keys -public            # Show only public keys")
+		fmt.Println("  crypt list-keys -v                 # Show verbose information")
+	}
+
+	listFlags.Parse(os.Args[2:])
+
+	// If neither private nor public is specified, show both
+	if !*showPrivate && !*showPublic {
+		*showPrivate = true
+		*showPublic = true
+	}
+
+	keys, err := collectKeyInfo(keystoreDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading keystore: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(keys) == 0 {
+		fmt.Printf("No keys found in keystore: %s\n", keystoreDir)
+		return
+	}
+
+	// Group keys by owner (name + email)
+	keysByOwner := make(map[string][]KeyInfo)
+	for _, key := range keys {
+		owner := fmt.Sprintf("%s <%s>", key.Name, key.Email)
+		keysByOwner[owner] = append(keysByOwner[owner], key)
+	}
+
+	fmt.Printf("Keys in keystore: %s\n\n", keystoreDir)
+
+	for owner, ownerKeys := range keysByOwner {
+		fmt.Printf("Owner: %s\n", owner)
+
+		for _, key := range ownerKeys {
+			if (key.IsPrivate && *showPrivate) || (!key.IsPrivate && *showPublic) {
+				keyType := "Public"
+				if key.IsPrivate {
+					keyType = "Private"
+				}
+
+				if *verbose {
+					// Load key to get ID
+					keyPath := filepath.Join(keystoreDir, key.Filename)
+					var keyID string
+					if key.IsPrivate {
+						if privKey, err := LoadPrivateKey(keyPath); err == nil {
+							// For private key, get the public key to generate ID
+							switch pk := privKey.(type) {
+							case *rsa.PrivateKey:
+								keyID = GenerateKeyID(&pk.PublicKey)
+							case *ecdsa.PrivateKey:
+								keyID = GenerateKeyID(&pk.PublicKey)
+							default:
+								keyID = "unknown"
+							}
+						} else {
+							keyID = "error"
+						}
+					} else {
+						if pubKey, err := LoadPublicKey(keyPath); err == nil {
+							keyID = GenerateKeyID(pubKey)
+						} else {
+							keyID = "error"
+						}
+					}
+
+					fmt.Printf("  %s Key: %s (Key ID: %s)\n", keyType, key.Date, keyID)
+					fmt.Printf("    File: %s\n", key.Filename)
+				} else {
+					fmt.Printf("  %s Key: %s\n", keyType, key.Date)
+				}
+			}
+		}
+		fmt.Println()
+	}
+}
+
+// collectKeyInfo gathers information about all keys in the keystore
+func collectKeyInfo(keystoreDir string) ([]KeyInfo, error) {
+	var keys []KeyInfo
+
+	err := filepath.Walk(keystoreDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".pem") {
+			keyInfo, err := ParseKeyFilename(info.Name())
+			if err != nil {
+				return nil // Skip invalid filenames
+			}
+			keys = append(keys, *keyInfo)
+		}
+		return nil
+	})
+
+	return keys, err
 }
