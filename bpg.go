@@ -1,9 +1,9 @@
-// Package crypt provides a high-level API for cryptographic operations
-package crypt
+// Package bpg provides a high-level API for cryptographic operations
+package bpg
 
 import (
-	"github.com/bazurto/crypt/pkg/crypto"
-	"github.com/bazurto/crypt/pkg/keystore"
+	"github.com/bazurto/bpg/pkg/crypto"
+	"github.com/bazurto/bpg/pkg/keystore"
 )
 
 // Client provides a high-level interface for encryption/decryption operations

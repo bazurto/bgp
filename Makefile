@@ -1,4 +1,4 @@
-# Makefile for Crypt - Cryptographic Library and CLI Tool
+# Makefile for BPG - Cryptographic Library and CLI Tool
 
 .PHONY: help build build-cli build-examples clean test fmt vet install deps run-example lint all
 
@@ -27,7 +27,7 @@ build: build-cli build-examples
 
 build-cli:
 	@echo "Building CLI tool..."
-	go build -o crypt ./cmd
+	go build -o bpg ./cmd
 
 build-examples:
 	@echo "Building examples..."
@@ -36,7 +36,7 @@ build-examples:
 # Clean target
 clean:
 	@echo "Cleaning up..."
-	rm -f crypt
+	rm -f bpg
 	rm -f examples/library/library_example
 	rm -f encrypted_message.json
 	go clean
@@ -71,7 +71,7 @@ deps:
 
 # Installation target
 install:
-	@echo "Installing crypt CLI tool..."
+	@echo "Installing bpg CLI tool..."
 	go install ./cmd
 
 # Demo and example targets
@@ -82,13 +82,13 @@ run-example: build-examples
 demo: build-cli
 	@echo "Running CLI demo..."
 	@echo "1. Generating keys..."
-	@./crypt keygen -name demo -email demo@example.com
+	@./bpg keygen -name demo -email demo@example.com
 	@echo ""
 	@echo "2. Listing keys..."
-	@./crypt list-keys
+	@./bpg list-keys
 	@echo ""
 	@echo "3. Encrypting and decrypting a message..."
-	@echo "Hello from Makefile demo!" | ./crypt encrypt -to demo -from demo@demo@example.com | ./crypt decrypt
+	@echo "Hello from Makefile demo!" | ./bpg encrypt -to demo -from demo@demo@example.com | ./bpg decrypt
 	@echo ""
 	@echo "Demo complete!"
 
@@ -103,12 +103,12 @@ dev-setup: deps
 # Release build (with optimizations)
 release: clean fmt vet test
 	@echo "Building release version..."
-	CGO_ENABLED=0 go build -ldflags="-w -s" -o crypt ./cmd
-	@echo "Release build complete: ./crypt"
+	CGO_ENABLED=0 go build -ldflags="-w -s" -o bpg ./cmd
+	@echo "Release build complete: ./bpg"
 
 # Quick build for development
 quick: 
-	go build -o crypt ./cmd
+	go build -o bpg ./cmd
 
 # Check everything is working
 check: build test run-example

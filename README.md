@@ -1,4 +1,4 @@
-# Crypt - Cryptographic Library and CLI Tool
+# BPG - Cryptographic Library and CLI Tool
 
 A Go library and CLI tool for secure message encryption and decryption with key management.
 
@@ -25,7 +25,7 @@ A Go library and CLI tool for secure message encryption and decryption with key 
 ├── examples/             # Usage examples
 │   └── library/         # Library usage example
 │       └── main.go
-├── crypt.go             # High-level library API
+├── bpg.go             # High-level library API
 ├── go.mod
 └── README.md
 ```
@@ -35,13 +35,13 @@ A Go library and CLI tool for secure message encryption and decryption with key 
 ### As a CLI tool:
 
 ```bash
-go build -o crypt ./cmd
+go build -o bpg ./cmd
 ```
 
 ### As a library:
 
 ```bash
-go get github.com/bazurto/crypt
+go get github.com/bazurto/bpg
 ```
 
 ## CLI Usage
@@ -50,29 +50,29 @@ go get github.com/bazurto/crypt
 
 ```bash
 # Generate a key pair
-crypt keygen -name alice -email alice@example.com
+bpg keygen -name alice -email alice@example.com
 
 # Import a public key
-crypt import-key -key public.pem -name bob -email bob@example.com
+bpg import-key -key public.pem -name bob -email bob@example.com
 
 # List all keys
-crypt list-keys
-crypt list-keys -v  # verbose with key IDs
+bpg list-keys
+bpg list-keys -v  # verbose with key IDs
 
 # Encrypt a message
-crypt encrypt -to alice -message "Hello World" -from bob@bob@example.com
+bpg encrypt -to alice -message "Hello World" -from bob@bob@example.com
 
 # Decrypt a message
-crypt decrypt < encrypted_message.json
-echo '{"encrypted":"data"}' | crypt decrypt
+bpg decrypt < encrypted_message.json
+echo '{"encrypted":"data"}' | bpg decrypt
 ```
 
 ### Global Options
 
 ```bash
 # Use custom keystore location
-crypt -keystore /path/to/keys list-keys
-crypt -keystore ./secure keygen -name user -email user@domain.com
+bpg -keystore /path/to/keys list-keys
+bpg -keystore ./secure keygen -name user -email user@domain.com
 ```
 
 ## Library Usage
@@ -83,12 +83,12 @@ package main
 import (
     "fmt"
     "log"
-    "github.com/bazurto/crypt"
+    "github.com/bazurto/bpg"
 )
 
 func main() {
     // Create a client with keystore path
-    client := crypt.NewClient("./keystore")
+    client := bpg.NewClient("./keystore")
     
     // Generate key pairs
     err := client.GenerateKeyPair("rsa", "", "alice", "alice@example.com")

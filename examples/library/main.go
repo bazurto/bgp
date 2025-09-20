@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/bazurto/crypt"
+	"github.com/bazurto/bpg"
 )
 
 func main() {
-	// Create a new crypt client with a keystore path
-	client := crypt.NewClient("./keystore")
+	// Create a new bpg client with a keystore path
+	client := bpg.NewClient("./keystore")
 
 	// Example 1: Generate a key pair
 	fmt.Println("Generating key pair...")
