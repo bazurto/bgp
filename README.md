@@ -169,6 +169,24 @@ See the `examples/` directory for complete usage examples:
 
 ## Building and Testing
 
+### Using Make (Recommended)
+
+```bash
+# Build everything (CLI + examples)
+make build
+
+# Run all checks (format, vet, test, build)
+make all
+
+# Run a quick demo
+make demo
+
+# Show all available targets
+make help
+```
+
+### Manual Build
+
 ```bash
 # Build CLI tool
 go build -o crypt ./cmd
@@ -179,6 +197,16 @@ cd examples/library && go build -o library_example
 # Test functionality
 ./library_example
 ```
+
+### Available Make Targets
+
+- `make build` - Build both CLI and examples
+- `make test` - Run tests
+- `make clean` - Remove built binaries
+- `make fmt` - Format Go code
+- `make demo` - Run a complete demonstration
+- `make install` - Install CLI to GOPATH/bin
+- `make release` - Build optimized release version
 
 ## License
 
