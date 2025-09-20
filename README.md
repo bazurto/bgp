@@ -55,12 +55,15 @@ go get github.com/bazurto/bpg
 # Generate a key pair
 bgp keygen -name alice -email alice@example.com
 
-# Import a public key
-bgp import-key -key public.pem -name bob -email bob@example.com
+# Import a public or private key (auto-detected)
+bgp import -key public.pem -name bob -email bob@example.com
 
 # List all keys
 bgp list-keys
 bgp list-keys -v  # verbose with key IDs
+# List all keys
+bgp list
+bgp list -v  # verbose with key IDs
 
 # Encrypt a message
 bgp encrypt -to alice -message "Hello World" -from bob@example.com
@@ -128,96 +131,162 @@ func main() {
     fmt.Printf("Decrypted: %s\n", decrypted)
     
     // Work with JSON
-    jsonData, _ := encrypted.ToJSON()
-    decryptedFromJSON, _ := client.DecryptJSON(jsonData)
-    fmt.Printf("From JSON: %s\n", decryptedFromJSON)
-}
-```
+    <!-- SPDX-License-Identifier: GPL-3.0-only -->
+    <!-- Copyright 2025 RH America LLC <info@rhamerica.com> -->
 
-## API Documentation
+    # BGP - Cryptographic Library and CLI Tool
 
-### High-Level Client API
+    A Go library and CLI tool for secure message encryption and decryption with key management.
 
-- `NewClient(keystorePath string) *Client` - Create a new client
-- `Encrypt(message, sender, recipient string) (*crypto.EncryptedMessage, error)` - Encrypt a message
-- `Decrypt(encryptedMsg *crypto.EncryptedMessage) (string, error)` - Decrypt a message
-- `DecryptJSON(jsonData []byte) (string, error)` - Decrypt from JSON data
-- `GenerateKeyPair(algorithm, curve, name, email string) error` - Generate and save key pair
-- `ImportPublicKey(keyFile, name, email string) (string, error)` - Import public key
-- `ListKeys() ([]keystore.KeyInfo, error)` - List all keys
+    ## Features
 
-### Low-Level Package APIs
+    - Hybrid encryption (RSA-OAEP + AES-GCM)
+    - Key management: key generation, import (public/private), and rotation
+    - CLI tool for common operations (encrypt, decrypt, key management)
+    - Library API for embedding in Go programs
 
-#### `pkg/keystore` Package
-- Key generation and management
-- File I/O operations
-- Key metadata parsing
+    ## Project layout
 
-#### `pkg/crypto` Package  
-- Encryption/decryption operations
-- Message signing and verification
-- JSON serialization
+    ```
+    .
+    ├── cmd/                    # CLI application
+    ├── pkg/                    # Library packages (crypto, keystore)
+    ├── examples/               # Usage examples
+    ├── bpg.go                  # High-level library API
+    ├── go.mod
+    └── README.md
+    ```
 
-## Security Features
+    ## Installation
 
-- **RSA-OAEP + AES-GCM**: Industry-standard hybrid encryption
-- **Key Rotation**: Automatically uses latest sender key, tries all keys for decryption
-- **Digital Signatures**: Messages are signed for authenticity verification
-- **Forward Security**: Each message uses a unique AES key
-- **Secure Key Storage**: PEM-encoded keys with proper file permissions
+    Build the CLI:
 
-## Key Format
+    ```bash
+    go build -o bgp ./cmd
+    ```
 
-Keys are stored in PEM format with standardized naming:
-- Private keys: `{name}_{email}_{date}_private.pem`
-- Public keys: `{name}_{email}_{date}_public.pem`
+    Install as a module:
 
-## Examples
+    ```bash
+    go get github.com/bazurto/bpg
+    ```
 
-See the `examples/` directory for complete usage examples:
-- `examples/library/` - Library integration example
+    ## CLI Usage
 
-## Building and Testing
+    Global options:
 
-### Using Make (Recommended)
+    ```bash
+    # Use a custom keystore directory
+    bgp -keystore /path/to/keys <command> [options]
 
-```bash
-# Build everything (CLI + examples)
-make build
+    # Default keystore directory is: ~/.bgp/keystore
+    ```
 
-# Run all checks (format, vet, test, build)
-make all
+    Basic commands and examples:
 
-# Run a quick demo
-make demo
+    ```bash
+    # Generate a new key pair
+    bgp keygen -name alice -email alice@example.com
 
-# Show all available targets
-make help
-```
+    # Import a key (public or private). The program will auto-detect key type.
+    bgp import -key /path/to/public.pem -name bob -email bob@example.com
+    bgp import -key /path/to/private.pem -name alice -email alice@example.com
 
-### Manual Build
+    # List keys
+    bgp list            # list keys grouped by owner (Key IDs shown by default)
+    bgp list -v         # verbose: also shows file paths
 
-```bash
-# Build CLI tool
-go build -o crypt ./cmd
+    # Export a key by filename or owner
+    bgp export -key alice_alice@example.com_20250920_public.pem -out /tmp/alice_pub.pem
 
-# Build library example
-cd examples/library && go build -o library_example
+    # Export the latest public key for an owner
+    bgp export -name alice -email alice@example.com -public -out /tmp/alice_pub.pem
 
-# Test functionality
-./library_example
-```
+    # Export by Key ID (as shown with `list -v`)
+    bgp export -id <KEYID> -out /tmp/key.pem
 
-### Available Make Targets
+    # Delete a key
+    #
+    # You can delete a key by Key ID, by filename/path, or by owner (name+email).
+    # The command will prompt for confirmation unless you pass `-yes`.
+    #
+    # Examples:
+    # Delete by Key ID
+    bgp delete -id <KEYID>
 
-- `make build` - Build both CLI and examples
-- `make test` - Run tests
-- `make clean` - Remove built binaries
-- `make fmt` - Format Go code
-- `make demo` - Run a complete demonstration
-- `make install` - Install CLI to GOPATH/bin
-- `make release` - Build optimized release version
+    # Delete the latest private key for an owner
+    bgp delete -name alice -email alice@example.com -private
 
-## License
+    # Delete by explicit key filename/path
+    bgp delete -key alice_alice@example.com_20250920_private.pem
 
-GNU General Public License v3.0 - see LICENSE file for details.
+    # Export to stdout (no -out):
+    bgp export -id <KEYID> > /tmp/key.pem
+
+    # Encrypt / Decrypt
+    bgp encrypt -to alice -message "Hello" -from bob@example.com
+    bgp decrypt < encrypted_message.json
+    ```
+
+    Notes on Key IDs
+
+    - Each key (public/private) is assigned a deterministic Key ID derived from the public key material (sha256 fingerprint, shortened). Use `bgp list -v` to view Key IDs.
+    - You can export a key by its Key ID with `bgp export -id <KEYID>`.
+
+    ## Key storage format
+
+    Keys are stored in PEM format using the naming convention:
+
+    - Private: `{name}_{email}_{YYYYMMDD}_private.pem`
+    - Public:  `{name}_{email}_{YYYYMMDD}_public.pem`
+
+    Private key files are written with restrictive permissions (0600). Public keys are written with 0644.
+
+    ## Examples / Library usage
+
+    See `examples/library/` for a small program that demonstrates generating keys, encrypting and decrypting.
+
+    ## Building and testing
+
+    Recommended (Makefile targets):
+
+    ```bash
+    make build   # build CLI and examples
+    make test    # run tests (if present)
+    make demo    # run a demo sequence
+    ```
+
+    Manual:
+
+    ```bash
+    go build -o bgp ./cmd
+    cd examples/library && go build -o library_example
+    ./library_example
+    ```
+
+    ## Quick demo (example output)
+
+    The following is a short demo showing generating a key, listing keys (Key IDs shown), and exporting by Key ID. Your Key ID will differ.
+
+    ```
+    $ bgp keygen -name demo -email demo@example.com
+    Key pair generated successfully:
+        Private key: ~/.bgp/keystore/demo_demo@example.com_20250920_private.pem
+        Public key:  ~/.bgp/keystore/demo_demo@example.com_20250920_public.pem
+        Key ID:      e1d2b997644d7d6b
+
+    $ bgp list
+    Keys in keystore: ~/.bgp/keystore
+
+    Owner: demo <demo@example.com>
+        Private Key: 20250920 (Key ID: e1d2b997644d7d6b)
+        Public Key: 20250920 (Key ID: e1d2b997644d7d6b)
+
+    $ bgp export -id e1d2b997644d7d6b -out /tmp/demo_export.pem
+    Key exported to: /tmp/demo_export.pem
+    ```
+
+
+    ## License
+
+    GNU General Public License v3.0 - see `LICENSE` for details.

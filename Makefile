@@ -37,6 +37,7 @@ build-examples:
 	cd examples/library && go build -o library_example
 
 # Clean target
+clean:
 	@echo "Cleaning up..."
 	rm -f bgp
 	rm -f examples/library/library_example
@@ -71,15 +72,18 @@ deps:
 	go mod download
 	go mod tidy
 
+
 # Installation target
 install:
 	@echo "Installing bgp CLI tool..."
 	go install ./cmd
 
 # Demo and example targets
+run-example: build-examples
 	@echo "Running library example..."
 	cd examples/library && ./library_example
 
+demo: build-cli
 	@echo "Running CLI demo..."
 	@echo "1. Generating keys in default keystore (~/.bgp/keystore)..."
 	@./bgp keygen -name demo -email demo@example.com
@@ -101,6 +105,7 @@ dev-setup: deps
 	fi
 
 # Release build (with optimizations)
+release: clean fmt vet test
 	@echo "Building release version..."
 	CGO_ENABLED=0 go build -ldflags="-w -s" -o bgp ./cmd
 	@echo "Release build complete: ./bgp"

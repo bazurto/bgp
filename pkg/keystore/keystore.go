@@ -38,6 +38,7 @@ type KeyInfo struct {
 	Date      string
 	Filename  string
 	IsPrivate bool
+	KeyID     string
 }
 
 // Keystore manages cryptographic keys
@@ -393,12 +394,80 @@ func (ks *Keystore) CollectKeyInfo() ([]KeyInfo, error) {
 			if err != nil {
 				return nil // Skip invalid filenames
 			}
+			// compute key ID if possible
+			keyPath := filepath.Join(ks.Path, info.Name())
+			if keyInfo != nil {
+				if keyInfo.IsPrivate {
+					if privKey, err := LoadPrivateKey(keyPath); err == nil {
+						switch pk := privKey.(type) {
+						case *rsa.PrivateKey:
+							keyInfo.KeyID = GenerateKeyID(&pk.PublicKey)
+						case *ecdsa.PrivateKey:
+							keyInfo.KeyID = GenerateKeyID(&pk.PublicKey)
+						}
+					}
+				} else {
+					if pubKey, err := LoadPublicKey(keyPath); err == nil {
+						keyInfo.KeyID = GenerateKeyID(pubKey)
+					}
+				}
+			}
+
 			keys = append(keys, *keyInfo)
 		}
 		return nil
 	})
 
 	return keys, err
+}
+
+// FindKeyByID returns the filename for the given key ID, searching both public and private keys
+func (ks *Keystore) FindKeyByID(keyID string) (string, error) {
+	var found string
+	err := filepath.Walk(ks.Path, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() || !strings.HasSuffix(info.Name(), ".pem") {
+			return nil
+		}
+		keyInfo, err := ParseKeyFilename(info.Name())
+		if err != nil {
+			return nil
+		}
+		keyPath := filepath.Join(ks.Path, info.Name())
+		if keyInfo.IsPrivate {
+			if privKey, err := LoadPrivateKey(keyPath); err == nil {
+				switch pk := privKey.(type) {
+				case *rsa.PrivateKey:
+					if GenerateKeyID(&pk.PublicKey) == keyID {
+						found = keyPath
+						return filepath.SkipDir
+					}
+				case *ecdsa.PrivateKey:
+					if GenerateKeyID(&pk.PublicKey) == keyID {
+						found = keyPath
+						return filepath.SkipDir
+					}
+				}
+			}
+		} else {
+			if pubKey, err := LoadPublicKey(keyPath); err == nil {
+				if GenerateKeyID(pubKey) == keyID {
+					found = keyPath
+					return filepath.SkipDir
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if found == "" {
+		return "", fmt.Errorf("no key found with id: %s", keyID)
+	}
+	return found, nil
 }
 
 // ImportPublicKey imports a public key file into the keystore
@@ -435,4 +504,127 @@ func (ks *Keystore) ImportPublicKey(keyFile, name, email string) (string, error)
 	}
 
 	return destFilename, nil
+}
+
+// ImportPrivateKey imports a private key file into the keystore
+func (ks *Keystore) ImportPrivateKey(keyFile, name, email string) (string, error) {
+	// Check if source key file exists
+	if _, err := os.Stat(keyFile); os.IsNotExist(err) {
+		return "", fmt.Errorf("key file does not exist: %s", keyFile)
+	}
+
+	// Verify it's a valid private key
+	_, err := LoadPrivateKey(keyFile)
+	if err != nil {
+		return "", fmt.Errorf("error loading private key from %s: %w", keyFile, err)
+	}
+
+	// Ensure keystore directory exists
+	if err := ks.EnsureExists(); err != nil {
+		return "", fmt.Errorf("error creating keystore directory: %w", err)
+	}
+
+	// Copy to keystore with standardized name
+	destFilename := filepath.Join(ks.Path, fmt.Sprintf("%s_%s_%s_private.pem", name, email, time.Now().Format("20060102")))
+
+	// Read source file
+	keyData, err := ioutil.ReadFile(keyFile)
+	if err != nil {
+		return "", fmt.Errorf("error reading key file: %w", err)
+	}
+
+	// Write to destination with restrictive permissions
+	err = ioutil.WriteFile(destFilename, keyData, 0600)
+	if err != nil {
+		return "", fmt.Errorf("error writing key to keystore: %w", err)
+	}
+
+	return destFilename, nil
+}
+
+// ExportKey copies a key from the keystore or absolute path to an output path, or writes to stdout when outPath is empty
+func (ks *Keystore) ExportKey(keyPath, outPath string) (string, error) {
+	// Determine source path: if absolute or exists as given, use it; otherwise assume it's relative to keystore
+	src := keyPath
+	if !filepath.IsAbs(src) {
+		// if path exists as given, prefer it; otherwise try keystore path
+		if _, err := os.Stat(src); os.IsNotExist(err) {
+			src = filepath.Join(ks.Path, keyPath)
+		}
+	}
+
+	if _, err := os.Stat(src); os.IsNotExist(err) {
+		return "", fmt.Errorf("key file does not exist: %s", src)
+	}
+
+	data, err := ioutil.ReadFile(src)
+	if err != nil {
+		return "", fmt.Errorf("failed to read key file: %w", err)
+	}
+
+	if outPath == "" {
+		// write to stdout
+		if _, err := os.Stdout.Write(data); err != nil {
+			return "", fmt.Errorf("failed to write key to stdout: %w", err)
+		}
+		return "-", nil
+	}
+
+	// Write to destination with permissive permissions for public keys, restrictive for private
+	perm := 0644
+	if strings.Contains(strings.ToLower(src), "private") {
+		perm = 0600
+	}
+
+	if err := ioutil.WriteFile(outPath, data, os.FileMode(perm)); err != nil {
+		return "", fmt.Errorf("failed to write key to %s: %w", outPath, err)
+	}
+
+	return outPath, nil
+}
+
+// GetLatestKeyForOwner returns the most recent key file path for a given owner and key type
+func (ks *Keystore) GetLatestKeyForOwner(name, email string, wantPrivate bool) (string, error) {
+	var latestKey *KeyInfo
+
+	err := filepath.Walk(ks.Path, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() || !strings.HasSuffix(info.Name(), ".pem") {
+			return nil
+		}
+
+		isPriv := strings.Contains(info.Name(), "private")
+		if wantPrivate != isPriv {
+			return nil
+		}
+
+		keyInfo, err := ParseKeyFilename(info.Name())
+		if err != nil {
+			return nil // skip invalid filenames
+		}
+
+		if keyInfo.Name == name && keyInfo.Email == email {
+			if latestKey == nil || keyInfo.Date > latestKey.Date {
+				latestKey = keyInfo
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	if latestKey == nil {
+		t := "public"
+		if wantPrivate {
+			t = "private"
+		}
+		return "", fmt.Errorf("no %s key found for %s <%s>", t, name, email)
+	}
+
+	return filepath.Join(ks.Path, latestKey.Filename), nil
 }

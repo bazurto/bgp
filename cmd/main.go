@@ -27,6 +27,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Allow quick help: bgp -h or bgp --help
+	if len(os.Args) >= 2 && (os.Args[1] == "-h" || os.Args[1] == "--help") {
+		printUsage()
+		os.Exit(0)
+	}
+
 	// Parse global keystore flag if present
 	args := os.Args[1:]
 	for i := 0; i < len(args); i++ {
@@ -59,10 +65,14 @@ func main() {
 		decryptCommand(keystoreDir)
 	case "keygen":
 		keygenCommand(keystoreDir)
-	case "import-key":
-		importKeyCommand(keystoreDir)
-	case "list-keys":
+	case "import":
+		importCommand(keystoreDir)
+	case "export":
+		exportKeyCommand(keystoreDir)
+	case "list":
 		listKeysCommand(keystoreDir)
+	case "delete":
+		deleteKeyCommand(keystoreDir)
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n", command)
 		printUsage()
@@ -80,15 +90,21 @@ func printUsage() {
 	fmt.Println("  encrypt    Encrypt a message")
 	fmt.Println("  decrypt    Decrypt a message")
 	fmt.Println("  keygen     Generate a new key pair")
-	fmt.Println("  import-key Import a public key")
-	fmt.Println("  list-keys  List all keys in keystore")
+	fmt.Println("  import     Import a public or private key (auto-detected)")
+	fmt.Println("  export     Export a key (public or private) from the keystore or path")
+	fmt.Println("  list       List all keys in keystore")
+	fmt.Println("  delete     Delete a key from the keystore (by id, key path, or owner)")
 	fmt.Println()
 	fmt.Println("Use 'bgp <command> -h' for command-specific help")
 	fmt.Println()
 	fmt.Println("Examples:")
 	fmt.Println("  bgp -keystore /path/to/keys encrypt -to alice -message 'Hello' -from bob@test.com")
-	fmt.Println("  bgp list-keys")
+	fmt.Println("  bgp list")
 	fmt.Println("  bgp -keystore ./mykeys keygen -name john -email john@example.com")
+	fmt.Println("  bgp import -key /path/to/private.pem -name alice -email alice@example.com")
+	fmt.Println("  bgp export -key alice_alice@example.com_20250920_public.pem -out /tmp/alice_pub.pem")
+	fmt.Println("  bgp delete -id <KEYID>")
+	fmt.Println("  bgp delete -name alice -email alice@example.com -private")
 }
 
 func encryptCommand(keystoreDir string) {
@@ -268,21 +284,21 @@ func keygenCommand(keystoreDir string) {
 	fmt.Printf("  Key ID:      %s\n", keystore.GenerateKeyID(pubKey))
 }
 
-func importKeyCommand(keystoreDir string) {
-	importFlags := flag.NewFlagSet("import-key", flag.ExitOnError)
-	keyFile := importFlags.String("key", "", "Path to public key file to import")
-	name := importFlags.String("name", "", "Name for the imported key owner")
-	email := importFlags.String("email", "", "Email for the imported key owner")
+func importCommand(keystoreDir string) {
+	importFlags := flag.NewFlagSet("import", flag.ExitOnError)
+	keyFile := importFlags.String("key", "", "Path to key file to import (public or private)")
+	name := importFlags.String("name", "", "Name for the key owner")
+	email := importFlags.String("email", "", "Email for the key owner")
 
 	importFlags.Usage = func() {
-		fmt.Println("Usage: bgp import-key -key <keyfile> -name <name> -email <email>")
+		fmt.Println("Usage: bgp import -key <keyfile> -name <name> -email <email>")
 		fmt.Println()
 		fmt.Println("Options:")
 		importFlags.PrintDefaults()
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  bgp import-key -key alice_public.pem -name alice -email alice@company.com")
-		fmt.Println("  bgp import-key -key /path/to/public.key -name john -email john@example.com")
+		fmt.Println("  bgp import -key alice_public.pem -name alice -email alice@company.com")
+		fmt.Println("  bgp import -key /path/to/private.pem -name john -email john@example.com")
 	}
 
 	importFlags.Parse(os.Args[2:])
@@ -292,41 +308,68 @@ func importKeyCommand(keystoreDir string) {
 		os.Exit(1)
 	}
 
-	// Create keystore and import key
 	ks := keystore.New(keystoreDir)
-	destFilename, err := ks.ImportPublicKey(*keyFile, *name, *email)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error importing key: %v\n", err)
-		os.Exit(1)
+
+	// Try to detect public key first
+	if _, err := keystore.LoadPublicKey(*keyFile); err == nil {
+		dest, err := ks.ImportPublicKey(*keyFile, *name, *email)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error importing public key: %v\n", err)
+			os.Exit(1)
+		}
+		pubKey, _ := keystore.LoadPublicKey(dest)
+		fmt.Printf("Public key imported successfully:\n")
+		fmt.Printf("  File: %s\n", dest)
+		fmt.Printf("  Owner: %s <%s>\n", *name, *email)
+		fmt.Printf("  Key ID: %s\n", keystore.GenerateKeyID(pubKey))
+		return
 	}
 
-	// Load the key to get its ID
-	publicKey, _ := keystore.LoadPublicKey(destFilename)
-	keyID := keystore.GenerateKeyID(publicKey)
+	// If not a public key, try private
+	if _, err := keystore.LoadPrivateKey(*keyFile); err == nil {
+		dest, err := ks.ImportPrivateKey(*keyFile, *name, *email)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error importing private key: %v\n", err)
+			os.Exit(1)
+		}
+		privKey, _ := keystore.LoadPrivateKey(dest)
+		var keyID string
+		switch pk := privKey.(type) {
+		case *rsa.PrivateKey:
+			keyID = keystore.GenerateKeyID(&pk.PublicKey)
+		case *ecdsa.PrivateKey:
+			keyID = keystore.GenerateKeyID(&pk.PublicKey)
+		default:
+			keyID = "unknown"
+		}
+		fmt.Printf("Private key imported successfully:\n")
+		fmt.Printf("  File: %s\n", dest)
+		fmt.Printf("  Owner: %s <%s>\n", *name, *email)
+		fmt.Printf("  Key ID: %s\n", keyID)
+		return
+	}
 
-	fmt.Printf("Public key imported successfully:\n")
-	fmt.Printf("  File: %s\n", destFilename)
-	fmt.Printf("  Owner: %s <%s>\n", *name, *email)
-	fmt.Printf("  Key ID: %s\n", keyID)
+	fmt.Fprintf(os.Stderr, "Error: provided file is not a recognized public or private key: %s\n", *keyFile)
+	os.Exit(1)
 }
 
 func listKeysCommand(keystoreDir string) {
-	listFlags := flag.NewFlagSet("list-keys", flag.ExitOnError)
+	listFlags := flag.NewFlagSet("list", flag.ExitOnError)
 	showPrivate := listFlags.Bool("private", false, "Show private keys")
 	showPublic := listFlags.Bool("public", false, "Show public keys")
-	verbose := listFlags.Bool("v", false, "Verbose output with key IDs and file paths")
+	verbose := listFlags.Bool("v", false, "Verbose output: include file paths (Key IDs are shown by default)")
 
 	listFlags.Usage = func() {
-		fmt.Println("Usage: bgp list-keys [options]")
+		fmt.Println("Usage: bgp list [options]")
 		fmt.Println()
 		fmt.Println("Options:")
 		listFlags.PrintDefaults()
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  bgp list-keys                    # Show all keys")
-		fmt.Println("  bgp list-keys -private           # Show only private keys")
-		fmt.Println("  bgp list-keys -public            # Show only public keys")
-		fmt.Println("  bgp list-keys -v                 # Show verbose information")
+		fmt.Println("  bgp list                    # Show all keys")
+		fmt.Println("  bgp list -private           # Show only private keys")
+		fmt.Println("  bgp list -public            # Show only public keys")
+		fmt.Println("  bgp list -v                 # Show file paths in addition to Key IDs")
 	}
 
 	listFlags.Parse(os.Args[2:])
@@ -369,39 +412,202 @@ func listKeysCommand(keystoreDir string) {
 					keyType = "Private"
 				}
 
+				// Key ID is shown by default
+				keyID := key.KeyID
+				if keyID == "" {
+					keyID = "unknown"
+				}
+				fmt.Printf("  %s Key: %s (Key ID: %s)\n", keyType, key.Date, keyID)
 				if *verbose {
-					// Load key to get ID
-					keyPath := filepath.Join(keystoreDir, key.Filename)
-					var keyID string
-					if key.IsPrivate {
-						if privKey, err := keystore.LoadPrivateKey(keyPath); err == nil {
-							// For private key, get the public key to generate ID
-							switch pk := privKey.(type) {
-							case *rsa.PrivateKey:
-								keyID = keystore.GenerateKeyID(&pk.PublicKey)
-							case *ecdsa.PrivateKey:
-								keyID = keystore.GenerateKeyID(&pk.PublicKey)
-							default:
-								keyID = "unknown"
-							}
-						} else {
-							keyID = "error"
-						}
-					} else {
-						if pubKey, err := keystore.LoadPublicKey(keyPath); err == nil {
-							keyID = keystore.GenerateKeyID(pubKey)
-						} else {
-							keyID = "error"
-						}
-					}
-
-					fmt.Printf("  %s Key: %s (Key ID: %s)\n", keyType, key.Date, keyID)
 					fmt.Printf("    File: %s\n", key.Filename)
-				} else {
-					fmt.Printf("  %s Key: %s\n", keyType, key.Date)
 				}
 			}
 		}
 		fmt.Println()
 	}
+}
+
+func importPrivateCommand(keystoreDir string) {
+	importFlags := flag.NewFlagSet("import-private", flag.ExitOnError)
+	keyFile := importFlags.String("key", "", "Path to private key file to import")
+	name := importFlags.String("name", "", "Name for the key owner")
+	email := importFlags.String("email", "", "Email for the key owner")
+
+	importFlags.Usage = func() {
+		fmt.Println("Usage: bgp import-private -key <keyfile> -name <name> -email <email>")
+		fmt.Println()
+		fmt.Println("Options:")
+		importFlags.PrintDefaults()
+	}
+
+	importFlags.Parse(os.Args[2:])
+
+	if *keyFile == "" || *name == "" || *email == "" {
+		importFlags.Usage()
+		os.Exit(1)
+	}
+
+	ks := keystore.New(keystoreDir)
+	dest, err := ks.ImportPrivateKey(*keyFile, *name, *email)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error importing private key: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Private key imported: %s\n", dest)
+}
+
+func exportKeyCommand(keystoreDir string) {
+	exportFlags := flag.NewFlagSet("export", flag.ExitOnError)
+	id := exportFlags.String("id", "", "Key ID to export (as shown with -v on list-keys)")
+	keyPath := exportFlags.String("key", "", "Key filename in keystore or absolute path")
+	out := exportFlags.String("out", "", "Output path (empty = stdout)")
+	name := exportFlags.String("name", "", "Owner name (use with -email to select key)")
+	email := exportFlags.String("email", "", "Owner email (use with -name to select key)")
+	wantPrivate := exportFlags.Bool("private", false, "Select private key")
+	wantPublic := exportFlags.Bool("public", false, "Select public key")
+
+	exportFlags.Usage = func() {
+		fmt.Println("Usage: bgp export -key <keyfile> [-out <outpath>]")
+		fmt.Println()
+		fmt.Println("Options:")
+		exportFlags.PrintDefaults()
+	}
+
+	exportFlags.Parse(os.Args[2:])
+
+	ks := keystore.New(keystoreDir)
+
+	// Resolve key by id if provided
+	resolvedKey := *keyPath
+	if *id != "" {
+		found, err := ks.FindKeyByID(*id)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error finding key by id: %v\n", err)
+			os.Exit(1)
+		}
+		resolvedKey = found
+	}
+
+	// If keyPath not provided, try resolving by owner name/email and type
+	if resolvedKey == "" {
+		if *name == "" || *email == "" {
+			exportFlags.Usage()
+			os.Exit(1)
+		}
+
+		// determine requested type: default to public if neither specified
+		priv := *wantPrivate
+		pub := *wantPublic
+		if !priv && !pub {
+			pub = true
+		}
+
+		var err error
+		if priv {
+			resolvedKey, err = ks.GetLatestKeyForOwner(*name, *email, true)
+		} else {
+			resolvedKey, err = ks.GetLatestKeyForOwner(*name, *email, false)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error resolving key for owner: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	dest, err := ks.ExportKey(resolvedKey, *out)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error exporting key: %v\n", err)
+		os.Exit(1)
+	}
+
+	if dest == "-" {
+		// already written to stdout
+		return
+	}
+	fmt.Printf("Key exported to: %s\n", dest)
+}
+
+func deleteKeyCommand(keystoreDir string) {
+	deleteFlags := flag.NewFlagSet("delete", flag.ExitOnError)
+	id := deleteFlags.String("id", "", "Key ID to delete (as shown with -v on list)")
+	keyPath := deleteFlags.String("key", "", "Key filename in keystore or absolute path to delete")
+	name := deleteFlags.String("name", "", "Owner name (use with -email to select key)")
+	email := deleteFlags.String("email", "", "Owner email (use with -name to select key)")
+	wantPrivate := deleteFlags.Bool("private", false, "Select private key to delete")
+	wantPublic := deleteFlags.Bool("public", false, "Select public key to delete")
+	yes := deleteFlags.Bool("yes", false, "Skip confirmation prompt and delete immediately")
+
+	deleteFlags.Usage = func() {
+		fmt.Println("Usage: bgp delete [options]")
+		fmt.Println()
+		fmt.Println("Options:")
+		deleteFlags.PrintDefaults()
+		fmt.Println()
+		fmt.Println("Examples:")
+		fmt.Println("  bgp delete -id <KEYID>")
+		fmt.Println("  bgp delete -name alice -email alice@example.com -private")
+	}
+
+	deleteFlags.Parse(os.Args[2:])
+
+	ks := keystore.New(keystoreDir)
+
+	// Resolve key by id if provided
+	resolvedKey := *keyPath
+	if *id != "" {
+		found, err := ks.FindKeyByID(*id)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error finding key by id: %v\n", err)
+			os.Exit(1)
+		}
+		resolvedKey = found
+	}
+
+	// If keyPath not provided, try resolving by owner name/email and type
+	if resolvedKey == "" {
+		if *name == "" || *email == "" {
+			deleteFlags.Usage()
+			os.Exit(1)
+		}
+
+		// determine requested type: default to public if neither specified
+		priv := *wantPrivate
+		pub := *wantPublic
+		if !priv && !pub {
+			pub = true
+		}
+
+		var err error
+		if priv {
+			resolvedKey, err = ks.GetLatestKeyForOwner(*name, *email, true)
+		} else {
+			resolvedKey, err = ks.GetLatestKeyForOwner(*name, *email, false)
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error resolving key for owner: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	// Confirm deletion unless -yes provided
+	if !*yes {
+		fmt.Fprintf(os.Stderr, "About to delete key: %s\n", resolvedKey)
+		fmt.Fprintf(os.Stderr, "Are you sure? (y/N): ")
+		var resp string
+		fmt.Scanln(&resp)
+		resp = strings.TrimSpace(strings.ToLower(resp))
+		if resp != "y" && resp != "yes" {
+			fmt.Println("Aborted.")
+			return
+		}
+	}
+
+	// Attempt to remove the file
+	if err := os.Remove(resolvedKey); err != nil {
+		fmt.Fprintf(os.Stderr, "Error deleting key file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Deleted key: %s\n", resolvedKey)
 }
