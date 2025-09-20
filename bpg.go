@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright 2025 RH America LLC <info@rhamerica.com>
+
 // Package bpg provides a high-level API for cryptographic operations
 package bpg
 

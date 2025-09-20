@@ -1,3 +1,6 @@
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright 2025 RH America LLC <info@rhamerica.com> -->
+
 # BPG - Cryptographic Library and CLI Tool
 
 A Go library and CLI tool for secure message encryption and decryption with key management.
@@ -216,4 +219,4 @@ cd examples/library && go build -o library_example
 
 ## License
 
-MIT License - see LICENSE file for details.
+GNU General Public License v3.0 - see LICENSE file for details.

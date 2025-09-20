@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright 2025 RH America LLC <info@rhamerica.com>
+
 package keystore
 
 import (
@@ -24,7 +27,7 @@ func GetDefaultKeystorePath() string {
 		// Fallback to current directory if home directory can't be determined
 		return filepath.Join(".", ".bpg", "keystore")
 	}
-	
+
 	return filepath.Join(homeDir, ".bpg", "keystore")
 }
 

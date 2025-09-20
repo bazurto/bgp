@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# Copyright 2025 RH America LLC <info@rhamerica.com>
+
 # Makefile for BPG - Cryptographic Library and CLI Tool
 
 .PHONY: help build build-cli build-examples clean test fmt vet install deps run-example lint all
