@@ -28,7 +28,7 @@ A Go library and CLI tool for secure message encryption and decryption with key 
 ├── examples/             # Usage examples
 │   └── library/         # Library usage example
 │       └── main.go
-├── bpg.go             # High-level library API
+├── bgp.go             # High-level library API
 ├── go.mod
 └── README.md
 ```
@@ -44,7 +44,7 @@ go build -o bgp ./cmd
 ### As a library:
 
 ```bash
-go get github.com/bazurto/bpg
+go get github.com/bazurto/bgp
 ```
 
 ## CLI Usage
@@ -93,15 +93,15 @@ go build -o crypt ./cmd
 import (
     "fmt"
     "log"
-    "github.com/bazurto/bpg"
+    "github.com/bazurto/bgp"
 )
 
 func main() {
     // Create a client with default keystore path (~/.bgp/keystore)
-    client := bpg.NewClientWithDefaultPath()
+    client := bgp.NewClientWithDefaultPath()
     
     // Or create a client with custom keystore path
-    // client := bpg.NewClient("./keystore")
+    // client := bgp.NewClient("./keystore")
     
     // Generate key pairs
     err := client.GenerateKeyPair("rsa", "", "alice", "alice@example.com")
@@ -152,7 +152,7 @@ func main() {
     ├── cmd/                    # CLI application
     ├── pkg/                    # Library packages (crypto, keystore)
     ├── examples/               # Usage examples
-    ├── bpg.go                  # High-level library API
+    ├── bgp.go                  # High-level library API
     ├── go.mod
     └── README.md
     ```
@@ -168,7 +168,7 @@ func main() {
     Install as a module:
 
     ```bash
-    go get github.com/bazurto/bpg
+    go get github.com/bazurto/bgp
     ```
 
     ## CLI Usage

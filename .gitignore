@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright 2025 RH America LLC <info@rhamerica.com>
 
-./bgp
+bgp
 # keep example artifacts ignored
 examples/library/keystore/
 examples/library/library_example

@@ -7,15 +7,15 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/bazurto/bpg"
+	"github.com/bazurto/bgp"
 )
 
 func main() {
-	// Create a new bpg client with the default keystore path (~/.bgp/keystore)
-	client := bpg.NewClientWithDefaultPath()
+	// Create a new bgp client with the default keystore path (~/.bgp/keystore)
+	client := bgp.NewClientWithDefaultPath()
 
 	// Or create with a custom path:
-	// client := bpg.NewClient("./keystore")
+	// client := bgp.NewClient("./keystore")
 
 	// Example 1: Generate a key pair
 	fmt.Println("Generating key pair...")

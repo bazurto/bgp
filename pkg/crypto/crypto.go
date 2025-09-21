@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bazurto/bpg/pkg/keystore"
+	"github.com/bazurto/bgp/pkg/keystore"
 )
 
 // EncryptedMessage represents the structure of an encrypted message

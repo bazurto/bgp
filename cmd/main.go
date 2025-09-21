@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bazurto/bpg/pkg/crypto"
-	"github.com/bazurto/bpg/pkg/keystore"
+	"github.com/bazurto/bgp/pkg/crypto"
+	"github.com/bazurto/bgp/pkg/keystore"
 )
 
 func main() {

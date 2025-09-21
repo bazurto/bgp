@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright 2025 RH America LLC <info@rhamerica.com>
 
-// Package bpg provides a high-level API for cryptographic operations
-package bpg
+// Package bgp provides a high-level API for cryptographic operations
+package bgp
 
 import (
-	"github.com/bazurto/bpg/pkg/crypto"
-	"github.com/bazurto/bpg/pkg/keystore"
+	"github.com/bazurto/bgp/pkg/crypto"
+	"github.com/bazurto/bgp/pkg/keystore"
 )
 
 // Client provides a high-level interface for encryption/decryption operations
@@ -16,7 +16,7 @@ type Client struct {
 	decryptor *crypto.Decryptor
 }
 
-// NewClient creates a new bpg client with the specified keystore path
+// NewClient creates a new bgp client with the specified keystore path
 func NewClient(keystorePath string) *Client {
 	ks := keystore.New(keystorePath)
 	return &Client{
@@ -26,7 +26,7 @@ func NewClient(keystorePath string) *Client {
 	}
 }
 
-// NewClientWithDefaultPath creates a new bpg client with the default keystore path
+// NewClientWithDefaultPath creates a new bgp client with the default keystore path
 func NewClientWithDefaultPath() *Client {
 	return NewClient(keystore.GetDefaultKeystorePath())
 }
