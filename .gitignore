@@ -2,6 +2,8 @@
 # Copyright 2025 RH America LLC <info@rhamerica.com>
 
 ./bgp
+# keep example artifacts ignored
 examples/library/keystore/
 examples/library/library_example
-./keystore/
+# ignore top-level keystore directory but allow pkg/keystore tests
+/.keystore/
