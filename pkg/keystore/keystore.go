@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright 2025 RH America LLC <info@rhamerica.com>
 
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright 2025 RH America LLC <info@rhamerica.com>
+
 package keystore
 
 import (
@@ -12,7 +15,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,13 +23,10 @@ import (
 
 // GetDefaultKeystorePath returns the default keystore path for the current user
 func GetDefaultKeystorePath() string {
-	// Get user's home directory
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		// Fallback to current directory if home directory can't be determined
 		return filepath.Join(".", ".bgp", "keystore")
 	}
-
 	return filepath.Join(homeDir, ".bgp", "keystore")
 }
 
@@ -58,7 +57,7 @@ func (ks *Keystore) EnsureExists() error {
 
 // LoadPrivateKey loads a private key from a PEM-encoded file, supporting both RSA and EC keys
 func LoadPrivateKey(filename string) (interface{}, error) {
-	privBytes, err := ioutil.ReadFile(filename)
+	privBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read private key file: %w", err)
 	}
@@ -69,8 +68,7 @@ func LoadPrivateKey(filename string) (interface{}, error) {
 	}
 
 	// Try parsing as PKCS#1
-	privKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-	if err == nil {
+	if privKey, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
 		return privKey, nil
 	}
 
@@ -92,7 +90,7 @@ func LoadPrivateKey(filename string) (interface{}, error) {
 
 // LoadPublicKey loads a public key from a PEM-encoded file, supporting both RSA and EC keys
 func LoadPublicKey(filename string) (interface{}, error) {
-	pubBytes, err := ioutil.ReadFile(filename)
+	pubBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read public key file: %w", err)
 	}
@@ -103,12 +101,11 @@ func LoadPublicKey(filename string) (interface{}, error) {
 	}
 
 	// Try parsing as PKCS#1
-	pubKey, err := x509.ParsePKCS1PublicKey(block.Bytes)
-	if err == nil {
+	if pubKey, err := x509.ParsePKCS1PublicKey(block.Bytes); err == nil {
 		return pubKey, nil
 	}
 
-	// Try parsing as PKCS#8
+	// Try parsing as PKIX
 	pubKeyIface, err := x509.ParsePKIXPublicKey(block.Bytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse public key: %w", err)
@@ -141,10 +138,7 @@ func ExportPrivateKey(key interface{}, filename string) error {
 		return fmt.Errorf("unsupported private key type")
 	}
 
-	privBlock := &pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: privBytes,
-	}
+	privBlock := &pem.Block{Type: "PRIVATE KEY", Bytes: privBytes}
 
 	privFile, err := os.Create(filename)
 	if err != nil {
@@ -152,8 +146,7 @@ func ExportPrivateKey(key interface{}, filename string) error {
 	}
 	defer privFile.Close()
 
-	err = pem.Encode(privFile, privBlock)
-	if err != nil {
+	if err := pem.Encode(privFile, privBlock); err != nil {
 		return fmt.Errorf("failed to write private key to file: %w", err)
 	}
 
@@ -177,10 +170,7 @@ func ExportPublicKey(key interface{}, filename string) error {
 		return fmt.Errorf("unsupported public key type")
 	}
 
-	pubBlock := &pem.Block{
-		Type:  "PUBLIC KEY",
-		Bytes: pubBytes,
-	}
+	pubBlock := &pem.Block{Type: "PUBLIC KEY", Bytes: pubBytes}
 
 	pubFile, err := os.Create(filename)
 	if err != nil {
@@ -188,8 +178,7 @@ func ExportPublicKey(key interface{}, filename string) error {
 	}
 	defer pubFile.Close()
 
-	err = pem.Encode(pubFile, pubBlock)
-	if err != nil {
+	if err := pem.Encode(pubFile, pubBlock); err != nil {
 		return fmt.Errorf("failed to write public key to file: %w", err)
 	}
 
@@ -235,7 +224,6 @@ func GenerateKeyPair(algorithm, curve, name, email string) (interface{}, interfa
 
 // ParseKeyFilename extracts metadata from key filename
 func ParseKeyFilename(filename string) (*KeyInfo, error) {
-	// Expected format: name_email_date_type.pem
 	nameWithoutExt := strings.TrimSuffix(filename, ".pem")
 	parts := strings.Split(nameWithoutExt, "_")
 
@@ -285,13 +273,11 @@ func (ks *Keystore) SaveKeyPair(privKey interface{}, pubKey interface{}, name, e
 	privFilename := filepath.Join(ks.Path, fmt.Sprintf("%s_%s_%s_private.pem", name, email, time.Now().Format("20060102")))
 	pubFilename := filepath.Join(ks.Path, fmt.Sprintf("%s_%s_%s_public.pem", name, email, time.Now().Format("20060102")))
 
-	err := ExportPrivateKey(privKey, privFilename)
-	if err != nil {
+	if err := ExportPrivateKey(privKey, privFilename); err != nil {
 		return fmt.Errorf("failed to export private key: %w", err)
 	}
 
-	err = ExportPublicKey(pubKey, pubFilename)
-	if err != nil {
+	if err := ExportPublicKey(pubKey, pubFilename); err != nil {
 		return fmt.Errorf("failed to export public key: %w", err)
 	}
 
@@ -305,6 +291,11 @@ func (ks *Keystore) FindLatestPrivateKey(name, email string) (string, error) {
 	err := filepath.Walk(ks.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+
+		// Skip the trash directory entirely
+		if info.IsDir() && info.Name() == ".trash" {
+			return filepath.SkipDir
 		}
 
 		if !info.IsDir() && strings.HasSuffix(info.Name(), ".pem") && strings.Contains(info.Name(), "private") {
@@ -342,6 +333,11 @@ func (ks *Keystore) FindPublicKeyByRecipient(recipient string) (string, error) {
 			return err
 		}
 
+		// Skip trash directory
+		if info.IsDir() && info.Name() == ".trash" {
+			return filepath.SkipDir
+		}
+
 		if !info.IsDir() && strings.HasSuffix(info.Name(), ".pem") && strings.Contains(info.Name(), "public") {
 			if strings.Contains(info.Name(), recipient) {
 				foundKey = path
@@ -371,6 +367,11 @@ func (ks *Keystore) GetAllPrivateKeys() ([]string, error) {
 			return err
 		}
 
+		// Skip trash directory
+		if info.IsDir() && info.Name() == ".trash" {
+			return filepath.SkipDir
+		}
+
 		if !info.IsDir() && strings.HasSuffix(info.Name(), ".pem") && strings.Contains(info.Name(), "private") {
 			keys = append(keys, path)
 		}
@@ -387,6 +388,11 @@ func (ks *Keystore) CollectKeyInfo() ([]KeyInfo, error) {
 	err := filepath.Walk(ks.Path, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+
+		// Skip trash directory
+		if info.IsDir() && info.Name() == ".trash" {
+			return filepath.SkipDir
 		}
 
 		if !info.IsDir() && strings.HasSuffix(info.Name(), ".pem") {
@@ -428,6 +434,12 @@ func (ks *Keystore) FindKeyByID(keyID string) (string, error) {
 		if err != nil {
 			return err
 		}
+
+		// Skip trash directory
+		if info.IsDir() && info.Name() == ".trash" {
+			return filepath.SkipDir
+		}
+
 		if info.IsDir() || !strings.HasSuffix(info.Name(), ".pem") {
 			return nil
 		}
@@ -472,34 +484,26 @@ func (ks *Keystore) FindKeyByID(keyID string) (string, error) {
 
 // ImportPublicKey imports a public key file into the keystore
 func (ks *Keystore) ImportPublicKey(keyFile, name, email string) (string, error) {
-	// Check if source key file exists
 	if _, err := os.Stat(keyFile); os.IsNotExist(err) {
 		return "", fmt.Errorf("key file does not exist: %s", keyFile)
 	}
 
-	// Verify it's a valid public key
-	_, err := LoadPublicKey(keyFile)
-	if err != nil {
+	if _, err := LoadPublicKey(keyFile); err != nil {
 		return "", fmt.Errorf("error loading public key from %s: %w", keyFile, err)
 	}
 
-	// Ensure keystore directory exists
 	if err := ks.EnsureExists(); err != nil {
 		return "", fmt.Errorf("error creating keystore directory: %w", err)
 	}
 
-	// Copy to keystore with standardized name
 	destFilename := filepath.Join(ks.Path, fmt.Sprintf("%s_%s_%s_public.pem", name, email, time.Now().Format("20060102")))
 
-	// Read source file
-	keyData, err := ioutil.ReadFile(keyFile)
+	keyData, err := os.ReadFile(keyFile)
 	if err != nil {
 		return "", fmt.Errorf("error reading key file: %w", err)
 	}
 
-	// Write to destination
-	err = ioutil.WriteFile(destFilename, keyData, 0644)
-	if err != nil {
+	if err := os.WriteFile(destFilename, keyData, 0644); err != nil {
 		return "", fmt.Errorf("error writing key to keystore: %w", err)
 	}
 
@@ -508,34 +512,26 @@ func (ks *Keystore) ImportPublicKey(keyFile, name, email string) (string, error)
 
 // ImportPrivateKey imports a private key file into the keystore
 func (ks *Keystore) ImportPrivateKey(keyFile, name, email string) (string, error) {
-	// Check if source key file exists
 	if _, err := os.Stat(keyFile); os.IsNotExist(err) {
 		return "", fmt.Errorf("key file does not exist: %s", keyFile)
 	}
 
-	// Verify it's a valid private key
-	_, err := LoadPrivateKey(keyFile)
-	if err != nil {
+	if _, err := LoadPrivateKey(keyFile); err != nil {
 		return "", fmt.Errorf("error loading private key from %s: %w", keyFile, err)
 	}
 
-	// Ensure keystore directory exists
 	if err := ks.EnsureExists(); err != nil {
 		return "", fmt.Errorf("error creating keystore directory: %w", err)
 	}
 
-	// Copy to keystore with standardized name
 	destFilename := filepath.Join(ks.Path, fmt.Sprintf("%s_%s_%s_private.pem", name, email, time.Now().Format("20060102")))
 
-	// Read source file
-	keyData, err := ioutil.ReadFile(keyFile)
+	keyData, err := os.ReadFile(keyFile)
 	if err != nil {
 		return "", fmt.Errorf("error reading key file: %w", err)
 	}
 
-	// Write to destination with restrictive permissions
-	err = ioutil.WriteFile(destFilename, keyData, 0600)
-	if err != nil {
+	if err := os.WriteFile(destFilename, keyData, 0600); err != nil {
 		return "", fmt.Errorf("error writing key to keystore: %w", err)
 	}
 
@@ -544,10 +540,8 @@ func (ks *Keystore) ImportPrivateKey(keyFile, name, email string) (string, error
 
 // ExportKey copies a key from the keystore or absolute path to an output path, or writes to stdout when outPath is empty
 func (ks *Keystore) ExportKey(keyPath, outPath string) (string, error) {
-	// Determine source path: if absolute or exists as given, use it; otherwise assume it's relative to keystore
 	src := keyPath
 	if !filepath.IsAbs(src) {
-		// if path exists as given, prefer it; otherwise try keystore path
 		if _, err := os.Stat(src); os.IsNotExist(err) {
 			src = filepath.Join(ks.Path, keyPath)
 		}
@@ -557,26 +551,24 @@ func (ks *Keystore) ExportKey(keyPath, outPath string) (string, error) {
 		return "", fmt.Errorf("key file does not exist: %s", src)
 	}
 
-	data, err := ioutil.ReadFile(src)
+	data, err := os.ReadFile(src)
 	if err != nil {
 		return "", fmt.Errorf("failed to read key file: %w", err)
 	}
 
 	if outPath == "" {
-		// write to stdout
 		if _, err := os.Stdout.Write(data); err != nil {
 			return "", fmt.Errorf("failed to write key to stdout: %w", err)
 		}
 		return "-", nil
 	}
 
-	// Write to destination with permissive permissions for public keys, restrictive for private
 	perm := 0644
 	if strings.Contains(strings.ToLower(src), "private") {
 		perm = 0600
 	}
 
-	if err := ioutil.WriteFile(outPath, data, os.FileMode(perm)); err != nil {
+	if err := os.WriteFile(outPath, data, os.FileMode(perm)); err != nil {
 		return "", fmt.Errorf("failed to write key to %s: %w", outPath, err)
 	}
 
@@ -592,6 +584,11 @@ func (ks *Keystore) GetLatestKeyForOwner(name, email string, wantPrivate bool) (
 			return err
 		}
 
+		// Skip trash directory
+		if info.IsDir() && info.Name() == ".trash" {
+			return filepath.SkipDir
+		}
+
 		if info.IsDir() || !strings.HasSuffix(info.Name(), ".pem") {
 			return nil
 		}
@@ -603,7 +600,7 @@ func (ks *Keystore) GetLatestKeyForOwner(name, email string, wantPrivate bool) (
 
 		keyInfo, err := ParseKeyFilename(info.Name())
 		if err != nil {
-			return nil // skip invalid filenames
+			return nil
 		}
 
 		if keyInfo.Name == name && keyInfo.Email == email {
@@ -630,9 +627,7 @@ func (ks *Keystore) GetLatestKeyForOwner(name, email string, wantPrivate bool) (
 }
 
 // MoveToTrash moves the specified file into a .trash subdirectory inside the keystore
-// and returns the new path. It creates the .trash directory if needed.
 func (ks *Keystore) MoveToTrash(srcPath string) (string, error) {
-	// Ensure keystore exists
 	if err := ks.EnsureExists(); err != nil {
 		return "", err
 	}
@@ -645,7 +640,6 @@ func (ks *Keystore) MoveToTrash(srcPath string) (string, error) {
 	base := filepath.Base(srcPath)
 	dest := filepath.Join(trashDir, base)
 
-	// If destination exists, append a timestamp
 	if _, err := os.Stat(dest); err == nil {
 		dest = filepath.Join(trashDir, fmt.Sprintf("%s.%d", base, time.Now().Unix()))
 	}
@@ -656,3 +650,30 @@ func (ks *Keystore) MoveToTrash(srcPath string) (string, error) {
 
 	return dest, nil
 }
+
+// PurgeTrash removes files in the .trash directory older than daysOld days.
+func (ks *Keystore) PurgeTrash(daysOld int) error {
+	trashDir := filepath.Join(ks.Path, ".trash")
+	if _, err := os.Stat(trashDir); os.IsNotExist(err) {
+		return nil
+	}
+
+	now := time.Now()
+	return filepath.Walk(trashDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if daysOld <= 0 {
+			return os.Remove(path)
+		}
+		if now.Sub(info.ModTime()) > time.Duration(daysOld)*24*time.Hour {
+			return os.Remove(path)
+		}
+		return nil
+	})
+}
+
+// If destination exists, append a timestamp

@@ -8,7 +8,7 @@ import (
 	"crypto/rsa"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,7 +127,10 @@ func encryptCommand(keystoreDir string) {
 		fmt.Println("  echo 'Secret message' | bgp encrypt -to alice -from bob@company.com")
 	}
 
-	encryptFlags.Parse(os.Args[2:])
+	if err := encryptFlags.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing encrypt flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	if *recipient == "" || *sender == "" {
 		encryptFlags.Usage()
@@ -137,7 +140,7 @@ func encryptCommand(keystoreDir string) {
 	// Read message from stdin if not provided
 	var messageText string
 	if *message == "" {
-		messageBytes, err := ioutil.ReadAll(os.Stdin)
+		messageBytes, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading from stdin: %v\n", err)
 			os.Exit(1)
@@ -190,20 +193,23 @@ func decryptCommand(keystoreDir string) {
 		fmt.Println("  echo '{\"encrypted\":\"data\"}' | bgp decrypt")
 	}
 
-	decryptFlags.Parse(os.Args[2:])
+	if err := decryptFlags.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing decrypt flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Read encrypted message from file or stdin
 	var inputData []byte
 	var err error
 
 	if *inputFile != "" {
-		inputData, err = ioutil.ReadFile(*inputFile)
+		inputData, err = os.ReadFile(*inputFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading input file: %v\n", err)
 			os.Exit(1)
 		}
 	} else {
-		inputData, err = ioutil.ReadAll(os.Stdin)
+		inputData, err = io.ReadAll(os.Stdin)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading from stdin: %v\n", err)
 			os.Exit(1)
@@ -255,7 +261,10 @@ func keygenCommand(keystoreDir string) {
 		fmt.Println("  bgp keygen -name alice -email alice@company.com -alg ec -curve P-384")
 	}
 
-	keygenFlags.Parse(os.Args[2:])
+	if err := keygenFlags.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing keygen flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	if *name == "" || *email == "" {
 		keygenFlags.Usage()
@@ -304,7 +313,10 @@ func importCommand(keystoreDir string) {
 		fmt.Println("  bgp import -key /path/to/private.pem -name john -email john@example.com")
 	}
 
-	importFlags.Parse(os.Args[2:])
+	if err := importFlags.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing import flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	if *keyFile == "" || *name == "" || *email == "" {
 		importFlags.Usage()
@@ -375,7 +387,10 @@ func listKeysCommand(keystoreDir string) {
 		fmt.Println("  bgp list -v                 # Show file paths in addition to Key IDs")
 	}
 
-	listFlags.Parse(os.Args[2:])
+	if err := listFlags.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing list flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	// If neither private nor public is specified, show both
 	if !*showPrivate && !*showPublic {
@@ -440,7 +455,6 @@ func exportKeyCommand(keystoreDir string) {
 	name := exportFlags.String("name", "", "Owner name (use with -email to select key)")
 	email := exportFlags.String("email", "", "Owner email (use with -name to select key)")
 	wantPrivate := exportFlags.Bool("private", false, "Select private key")
-	wantPublic := exportFlags.Bool("public", false, "Select public key")
 
 	exportFlags.Usage = func() {
 		fmt.Println("Usage: bgp export -key <keyfile> [-out <outpath>]")
@@ -449,7 +463,10 @@ func exportKeyCommand(keystoreDir string) {
 		exportFlags.PrintDefaults()
 	}
 
-	exportFlags.Parse(os.Args[2:])
+	if err := exportFlags.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing export flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	ks := keystore.New(keystoreDir)
 
@@ -473,10 +490,7 @@ func exportKeyCommand(keystoreDir string) {
 
 		// determine requested type: default to public if neither specified
 		priv := *wantPrivate
-		pub := *wantPublic
-		if !priv && !pub {
-			pub = true
-		}
+		// if neither private nor public were requested, default to public (i.e. priv=false)
 
 		var err error
 		if priv {
@@ -510,9 +524,9 @@ func deleteKeyCommand(keystoreDir string) {
 	name := deleteFlags.String("name", "", "Owner name (use with -email to select key)")
 	email := deleteFlags.String("email", "", "Owner email (use with -name to select key)")
 	wantPrivate := deleteFlags.Bool("private", false, "Select private key to delete")
-	wantPublic := deleteFlags.Bool("public", false, "Select public key to delete")
 	yes := deleteFlags.Bool("yes", false, "Skip confirmation prompt and delete immediately")
 	purge := deleteFlags.Bool("purge", false, "Permanently remove the file instead of moving to trash")
+	dryRun := deleteFlags.Bool("dry-run", false, "Show what would be deleted/moved without making changes")
 
 	deleteFlags.Usage = func() {
 		fmt.Println("Usage: bgp delete [options]")
@@ -525,7 +539,10 @@ func deleteKeyCommand(keystoreDir string) {
 		fmt.Println("  bgp delete -name alice -email alice@example.com -private")
 	}
 
-	deleteFlags.Parse(os.Args[2:])
+	if err := deleteFlags.Parse(os.Args[2:]); err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing delete flags: %v\n", err)
+		os.Exit(1)
+	}
 
 	ks := keystore.New(keystoreDir)
 
@@ -549,10 +566,7 @@ func deleteKeyCommand(keystoreDir string) {
 
 		// determine requested type: default to public if neither specified
 		priv := *wantPrivate
-		pub := *wantPublic
-		if !priv && !pub {
-			pub = true
-		}
+		// default to public when both flags are false (i.e. priv remains false)
 
 		var err error
 		if priv {
@@ -566,12 +580,25 @@ func deleteKeyCommand(keystoreDir string) {
 		}
 	}
 
+	// Dry-run: show action and return (do this before interactive confirmation)
+	if *dryRun {
+		if *purge {
+			fmt.Printf("Would permanently delete: %s\n", resolvedKey)
+		} else {
+			fmt.Printf("Would move to trash: %s\n", resolvedKey)
+		}
+		return
+	}
+
 	// Confirm deletion unless -yes provided
 	if !*yes {
 		fmt.Fprintf(os.Stderr, "About to delete key: %s\n", resolvedKey)
 		fmt.Fprintf(os.Stderr, "Are you sure? (y/N): ")
 		var resp string
-		fmt.Scanln(&resp)
+		if _, err := fmt.Scanln(&resp); err != nil && err != io.EOF {
+			fmt.Fprintf(os.Stderr, "Failed to read confirmation: %v\n", err)
+			os.Exit(1)
+		}
 		resp = strings.TrimSpace(strings.ToLower(resp))
 		if resp != "y" && resp != "yes" {
 			fmt.Println("Aborted.")

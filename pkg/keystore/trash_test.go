@@ -1,14 +1,13 @@
 package keystore
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestMoveToTrash(t *testing.T) {
-	tmpDir, err := ioutil.TempDir("", "keystore_trash_test")
+	tmpDir, err := os.MkdirTemp("", "keystore_trash_test")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -21,7 +20,7 @@ func TestMoveToTrash(t *testing.T) {
 
 	// create a dummy file
 	filePath := filepath.Join(tmpDir, "alice_alice@example.com_20250920_public.pem")
-	if err := ioutil.WriteFile(filePath, []byte("pub"), 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte("pub"), 0644); err != nil {
 		t.Fatalf("failed to write dummy file: %v", err)
 	}
 

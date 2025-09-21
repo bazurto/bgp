@@ -3,7 +3,7 @@
 
 # Makefile for BGP - Cryptographic Library and CLI Tool
 
-.PHONY: help build build-cli build-examples clean test fmt vet install deps run-example lint all
+.PHONY: help build build-cli build-examples clean test fmt vet install deps run-example lint all goimports integration-test ci
 
 # Default target
 all: clean fmt vet test build
@@ -54,17 +54,32 @@ fmt:
 	@echo "Formatting code..."
 	go fmt ./...
 
+goimports:
+	@echo "Checking goimports (no changes allowed)..."
+	@# Ensure goimports is installed (install unconditionally to guarantee availability)
+	@go install golang.org/x/tools/cmd/goimports@latest
+	@# Run goimports in a subshell and fail if any files would change
+	@sh -c 'if [ -n "$$(goimports -l .)" ]; then echo "goimports found issues:"; goimports -l .; exit 1; fi'
+
 vet:
 	@echo "Running go vet..."
 	go vet ./...
 
 lint:
 	@echo "Running linter..."
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
-	else \
-		echo "golangci-lint not found, skipping..."; \
-	fi
+	@# Ensure golangci-lint is installed (install unconditionally to guarantee availability)
+	@go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@echo "Running golangci-lint..."
+	@golangci-lint run
+
+integration-test:
+	@echo "Running integration tests (builds binary and runs integration package tests)..."
+	@# Ensure example binary and CLI build succeed
+	go build -o bgp ./cmd
+	go test ./integration -run TestEndToEnd -v
+
+ci: fmt goimports vet lint test build
+	@echo "CI pipeline finished successfully"
 
 # Dependency management
 deps:

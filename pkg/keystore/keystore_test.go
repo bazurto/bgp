@@ -1,14 +1,13 @@
 package keystore
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestFindKeyByID_SaveAndFind(t *testing.T) {
-	tmp, err := ioutil.TempDir("", "keystore_test")
+	tmp, err := os.MkdirTemp("", "keystore_test")
 	if err != nil {
 		t.Fatalf("tempdir: %v", err)
 	}
@@ -59,13 +58,13 @@ func TestFindKeyByID_SaveAndFind(t *testing.T) {
 }
 
 func TestImportPublicAndPrivate(t *testing.T) {
-	srcDir, err := ioutil.TempDir("", "keystore_src")
+	srcDir, err := os.MkdirTemp("", "keystore_src")
 	if err != nil {
 		t.Fatalf("tempdir src: %v", err)
 	}
 	defer os.RemoveAll(srcDir)
 
-	ksDir, err := ioutil.TempDir("", "keystore_dest")
+	ksDir, err := os.MkdirTemp("", "keystore_dest")
 	if err != nil {
 		t.Fatalf("tempdir dest: %v", err)
 	}

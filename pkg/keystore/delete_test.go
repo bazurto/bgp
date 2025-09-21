@@ -1,7 +1,6 @@
 package keystore
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,7 +10,7 @@ import (
 // returns the expected path and that the file can be removed.
 func TestDeleteByOwnerAndByID(t *testing.T) {
 	// create temporary keystore directory
-	tmpDir, err := ioutil.TempDir("", "keystore_test")
+	tmpDir, err := os.MkdirTemp("", "keystore_test")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
@@ -30,10 +29,10 @@ func TestDeleteByOwnerAndByID(t *testing.T) {
 	privFilename := filepath.Join(tmpDir, name+"_"+email+"_"+date+"_private.pem")
 
 	// write dummy data to both files
-	if err := ioutil.WriteFile(pubFilename, []byte("PUBLICKEY"), 0644); err != nil {
+	if err := os.WriteFile(pubFilename, []byte("PUBLICKEY"), 0644); err != nil {
 		t.Fatalf("failed to write public file: %v", err)
 	}
-	if err := ioutil.WriteFile(privFilename, []byte("PRIVATEKEY"), 0600); err != nil {
+	if err := os.WriteFile(privFilename, []byte("PRIVATEKEY"), 0600); err != nil {
 		t.Fatalf("failed to write private file: %v", err)
 	}
 
