@@ -357,6 +357,64 @@ func ParseEncryptedMessage(data []byte) (*EncryptedMessage, error) {
 	return &encryptedMsg, nil
 }
 
+// VerifyMessage verifies a sign-only message using any available public key in the keystore
+func (d *Decryptor) VerifyMessage(encryptedMsg *EncryptedMessage) (string, error) {
+	// For sign-only messages, the ciphertext contains the base64-encoded original message
+	messageBytes, err := base64.StdEncoding.DecodeString(encryptedMsg.Ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode message: %w", err)
+	}
+
+	// Decode the signature
+	signature, err := base64.StdEncoding.DecodeString(encryptedMsg.Signature)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode signature: %w", err)
+	}
+
+	// Try to find the sender's public key to verify the signature
+	if encryptedMsg.Sender != "" {
+		// Try to find sender's public key by parsing sender info
+		if strings.Contains(encryptedMsg.Sender, "@") {
+			name, email, parseErr := parseSenderInfo(encryptedMsg.Sender)
+			if parseErr == nil {
+				// Try to find public key for this sender
+				keys, err := d.keystore.CollectKeyInfo()
+				if err == nil {
+					for _, key := range keys {
+						if !key.IsPrivate && key.Name == name && key.Email == email {
+							publicKeyPath := filepath.Join(d.keystore.Path, key.Filename)
+							publicKey, err := keystore.LoadPublicKey(publicKeyPath)
+							if err == nil {
+								if verifySignature(messageBytes, signature, publicKey) {
+									return string(messageBytes), nil
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("failed to verify signature: sender's public key not found or signature invalid")
+}
+
+// ProcessMessage determines if the message needs verification or decryption and processes it accordingly
+func (d *Decryptor) ProcessMessage(encryptedMsg *EncryptedMessage) (string, bool, error) {
+	// Determine message type based on algorithm
+	isSignOnly := encryptedMsg.Algorithm == "Sign-Only"
+
+	if isSignOnly {
+		// This is a sign-only message, verify it
+		message, err := d.VerifyMessage(encryptedMsg)
+		return message, true, err // true indicates verification was performed
+	} else {
+		// This is an encrypted message (with or without signature), decrypt it
+		message, err := d.DecryptMessage(encryptedMsg)
+		return message, false, err // false indicates decryption was performed
+	}
+}
+
 // ToJSON converts an EncryptedMessage to JSON bytes
 func (em *EncryptedMessage) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(em, "", "  ")
@@ -490,5 +548,19 @@ func signMessage(message []byte, privateKey interface{}) ([]byte, error) {
 		return ecdsa.SignASN1(rand.Reader, privKey, hash[:])
 	default:
 		return nil, fmt.Errorf("unsupported private key type for signing")
+	}
+}
+
+func verifySignature(message, signature []byte, publicKey interface{}) bool {
+	hash := sha256.Sum256(message)
+
+	switch pubKey := publicKey.(type) {
+	case *rsa.PublicKey:
+		err := rsa.VerifyPKCS1v15(pubKey, 0, hash[:], signature)
+		return err == nil
+	case *ecdsa.PublicKey:
+		return ecdsa.VerifyASN1(pubKey, hash[:], signature)
+	default:
+		return false
 	}
 }

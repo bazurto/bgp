@@ -91,7 +91,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Commands:")
 	fmt.Println("  encrypt    Encrypt a message")
-	fmt.Println("  decrypt    Decrypt a message")
+	fmt.Println("  decrypt    Decrypt a message or verify a signature")
 	fmt.Println("  keygen     Generate a new key pair")
 	fmt.Println("  import     Import a public or private key (auto-detected)")
 	fmt.Println("  export     Export a key (public or private) from the keystore or path")
@@ -212,13 +212,18 @@ func decryptCommand(keystoreDir string) {
 	decryptFlags.Usage = func() {
 		fmt.Println("Usage: bgp decrypt [options]")
 		fmt.Println()
+		fmt.Println("Automatically detects message type and performs the appropriate operation:")
+		fmt.Println("  - Encrypted messages: Decrypts the message")
+		fmt.Println("  - Sign-only messages: Verifies the signature and outputs the original message")
+		fmt.Println()
 		fmt.Println("Options:")
 		decryptFlags.PrintDefaults()
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  bgp decrypt < encrypted_message.json")
-		fmt.Println("  bgp decrypt -input encrypted_message.json")
-		fmt.Println("  echo '{\"encrypted\":\"data\"}' | bgp decrypt")
+		fmt.Println("  bgp decrypt < encrypted_message.json       # Decrypt an encrypted message")
+		fmt.Println("  bgp decrypt < signed_message.json          # Verify a signed message")
+		fmt.Println("  bgp decrypt -input message.json            # Process message from file")
+		fmt.Println("  echo '{\"algorithm\":\"Sign-Only\"}' | bgp decrypt  # Verify from stdin")
 	}
 
 	if err := decryptFlags.Parse(os.Args[2:]); err != nil {
@@ -261,11 +266,20 @@ func decryptCommand(keystoreDir string) {
 	ks := keystore.New(keystoreDir)
 	decryptor := crypto.NewDecryptor(ks)
 
-	// Decrypt the message
-	message, err := decryptor.DecryptMessage(encryptedMsg)
+	// Process the message (decrypt or verify based on type)
+	message, wasVerified, err := decryptor.ProcessMessage(encryptedMsg)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error decrypting message: %v\n", err)
+		if wasVerified {
+			fmt.Fprintf(os.Stderr, "Error verifying signature: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Error decrypting message: %v\n", err)
+		}
 		os.Exit(1)
+	}
+
+	// Show what operation was performed for user feedback
+	if wasVerified {
+		fmt.Fprintf(os.Stderr, "✓ Signature verified successfully\n")
 	}
 
 	fmt.Print(message)
