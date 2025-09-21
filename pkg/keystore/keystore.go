@@ -575,6 +575,133 @@ func (ks *Keystore) ExportKey(keyPath, outPath string) (string, error) {
 	return outPath, nil
 }
 
+// ExportKeyWithMetadata exports a key with metadata headers including name, email, and key ID
+func (ks *Keystore) ExportKeyWithMetadata(keyPath, outPath string) (string, error) {
+	src := keyPath
+	if !filepath.IsAbs(src) {
+		if _, err := os.Stat(src); os.IsNotExist(err) {
+			src = filepath.Join(ks.Path, keyPath)
+		}
+	}
+
+	if _, err := os.Stat(src); os.IsNotExist(err) {
+		return "", fmt.Errorf("key file does not exist: %s", src)
+	}
+
+	// Extract metadata from filename
+	filename := filepath.Base(src)
+	keyInfo, err := ParseKeyFilename(filename)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse key filename: %w", err)
+	}
+
+	// Read the key data
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return "", fmt.Errorf("failed to read key file: %w", err)
+	}
+
+	// Generate Key ID
+	var keyID string
+	if keyInfo.IsPrivate {
+		if privKey, err := LoadPrivateKey(src); err == nil {
+			switch pk := privKey.(type) {
+			case *rsa.PrivateKey:
+				keyID = GenerateKeyID(&pk.PublicKey)
+			case *ecdsa.PrivateKey:
+				keyID = GenerateKeyID(&pk.PublicKey)
+			default:
+				keyID = "unknown"
+			}
+		}
+	} else {
+		if pubKey, err := LoadPublicKey(src); err == nil {
+			keyID = GenerateKeyID(pubKey)
+		}
+	}
+
+	// Create metadata header
+	now := time.Now().UTC()
+	keyType := "PUBLIC"
+	if keyInfo.IsPrivate {
+		keyType = "PRIVATE"
+	}
+	
+	var metadata strings.Builder
+	metadata.WriteString("# BGP Key Export\n")
+	metadata.WriteString(fmt.Sprintf("# Name: %s\n", keyInfo.Name))
+	metadata.WriteString(fmt.Sprintf("# Email: %s\n", keyInfo.Email))
+	metadata.WriteString(fmt.Sprintf("# Key ID: %s\n", keyID))
+	metadata.WriteString(fmt.Sprintf("# Key Type: %s\n", keyType))
+	metadata.WriteString(fmt.Sprintf("# Export Date: %s\n", now.Format(time.RFC3339)))
+	metadata.WriteString("# \n")
+
+	// Combine metadata with key data
+	output := metadata.String() + string(data)
+
+	if outPath == "" {
+		if _, err := os.Stdout.WriteString(output); err != nil {
+			return "", fmt.Errorf("failed to write key to stdout: %w", err)
+		}
+		return "-", nil
+	}
+
+	perm := 0644
+	if keyInfo.IsPrivate {
+		perm = 0600
+	}
+
+	if err := os.WriteFile(outPath, []byte(output), os.FileMode(perm)); err != nil {
+		return "", fmt.Errorf("failed to write key to %s: %w", outPath, err)
+	}
+
+	return outPath, nil
+}
+
+// KeyMetadata represents metadata extracted from an exported key
+type KeyMetadata struct {
+	Name    string
+	Email   string
+	KeyID   string
+	KeyType string
+}
+
+// ParseExportedKeyMetadata extracts metadata from an exported key file
+func ParseExportedKeyMetadata(data []byte) (*KeyMetadata, []byte, error) {
+	content := string(data)
+	lines := strings.Split(content, "\n")
+	
+	metadata := &KeyMetadata{}
+	var keyDataStart int
+	
+	// Look for BGP key export header
+	if len(lines) > 0 && strings.HasPrefix(lines[0], "# BGP Key Export") {
+		for i, line := range lines {
+			if strings.HasPrefix(line, "# Name: ") {
+				metadata.Name = strings.TrimPrefix(line, "# Name: ")
+			} else if strings.HasPrefix(line, "# Email: ") {
+				metadata.Email = strings.TrimPrefix(line, "# Email: ")
+			} else if strings.HasPrefix(line, "# Key ID: ") {
+				metadata.KeyID = strings.TrimPrefix(line, "# Key ID: ")
+			} else if strings.HasPrefix(line, "# Key Type: ") {
+				metadata.KeyType = strings.TrimPrefix(line, "# Key Type: ")
+			} else if strings.HasPrefix(line, "-----BEGIN") {
+				keyDataStart = i
+				break
+			}
+		}
+		
+		// Extract the PEM data (everything from -----BEGIN onwards)
+		if keyDataStart > 0 {
+			keyData := strings.Join(lines[keyDataStart:], "\n")
+			return metadata, []byte(keyData), nil
+		}
+	}
+	
+	// No metadata found, return original data
+	return nil, data, nil
+}
+
 // GetLatestKeyForOwner returns the most recent key file path for a given owner and key type
 func (ks *Keystore) GetLatestKeyForOwner(name, email string, wantPrivate bool) (string, error) {
 	var latestKey *KeyInfo

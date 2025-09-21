@@ -104,7 +104,7 @@ func printUsage() {
 	fmt.Println("  bgp -keystore /path/to/keys encrypt -to alice -message 'Hello' -from bob@test.com")
 	fmt.Println("  bgp list")
 	fmt.Println("  bgp -keystore ./mykeys keygen -name john -email john@example.com")
-	fmt.Println("  bgp import -key /path/to/private.pem -name alice -email alice@example.com")
+	fmt.Println("  bgp import -key exported_key.pem                    # Use embedded metadata")
 	fmt.Println("  bgp export -name alice -email alice@example.com -out /tmp/alice_pub.pem")
 	fmt.Println("  bgp delete -id <KEYID>")
 	fmt.Println("  bgp delete -name alice -email alice@example.com -private")
@@ -299,16 +299,21 @@ func keygenCommand(keystoreDir string) {
 func importCommand(keystoreDir string) {
 	importFlags := flag.NewFlagSet("import", flag.ExitOnError)
 	keyFile := importFlags.String("key", "", "Path to key file to import (public or private)")
-	name := importFlags.String("name", "", "Name for the key owner")
-	email := importFlags.String("email", "", "Email for the key owner")
+	name := importFlags.String("name", "", "Name for the key owner (optional if key contains metadata)")
+	email := importFlags.String("email", "", "Email for the key owner (optional if key contains metadata)")
 
 	importFlags.Usage = func() {
-		fmt.Println("Usage: bgp import -key <keyfile> -name <name> -email <email>")
+		fmt.Println("Usage: bgp import -key <keyfile> [-name <name>] [-email <email>]")
+		fmt.Println()
+		fmt.Println("The -name and -email flags are optional if the key file contains metadata")
+		fmt.Println("from a previous BGP export operation. If provided, they will override")
+		fmt.Println("any metadata found in the file.")
 		fmt.Println()
 		fmt.Println("Options:")
 		importFlags.PrintDefaults()
 		fmt.Println()
 		fmt.Println("Examples:")
+		fmt.Println("  bgp import -key exported_key.pem                    # Use embedded metadata")
 		fmt.Println("  bgp import -key alice_public.pem -name alice -email alice@company.com")
 		fmt.Println("  bgp import -key /path/to/private.pem -name john -email john@example.com")
 	}
@@ -318,16 +323,66 @@ func importCommand(keystoreDir string) {
 		os.Exit(1)
 	}
 
-	if *keyFile == "" || *name == "" || *email == "" {
+	if *keyFile == "" {
+		fmt.Fprintf(os.Stderr, "Error: -key flag is required\n")
 		importFlags.Usage()
 		os.Exit(1)
 	}
 
+	// Read the key file
+	keyData, err := os.ReadFile(*keyFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading key file: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Try to parse metadata from the file
+	metadata, cleanKeyData, err := keystore.ParseExportedKeyMetadata(keyData)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing key metadata: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Determine final name and email
+	finalName := *name
+	finalEmail := *email
+	
+	if metadata != nil {
+		if finalName == "" {
+			finalName = metadata.Name
+		}
+		if finalEmail == "" {
+			finalEmail = metadata.Email
+		}
+	}
+
+	// Validate that we have name and email
+	if finalName == "" || finalEmail == "" {
+		fmt.Fprintf(os.Stderr, "Error: name and email are required (either via flags or embedded metadata)\n")
+		importFlags.Usage()
+		os.Exit(1)
+	}
+
+	// Create a temporary file with the clean key data for testing
+	tmpFile, err := os.CreateTemp("", "bgp_import_*.pem")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating temporary file: %v\n", err)
+		os.Exit(1)
+	}
+	defer os.Remove(tmpFile.Name())
+	
+	if _, err := tmpFile.Write(cleanKeyData); err != nil {
+		tmpFile.Close()
+		fmt.Fprintf(os.Stderr, "Error writing temporary file: %v\n", err)
+		os.Exit(1)
+	}
+	tmpFile.Close()
+
 	ks := keystore.New(keystoreDir)
 
 	// Try to detect public key first
-	if _, err := keystore.LoadPublicKey(*keyFile); err == nil {
-		dest, err := ks.ImportPublicKey(*keyFile, *name, *email)
+	if _, err := keystore.LoadPublicKey(tmpFile.Name()); err == nil {
+		dest, err := ks.ImportPublicKey(tmpFile.Name(), finalName, finalEmail)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error importing public key: %v\n", err)
 			os.Exit(1)
@@ -335,14 +390,17 @@ func importCommand(keystoreDir string) {
 		pubKey, _ := keystore.LoadPublicKey(dest)
 		fmt.Printf("Public key imported successfully:\n")
 		fmt.Printf("  File: %s\n", dest)
-		fmt.Printf("  Owner: %s <%s>\n", *name, *email)
+		fmt.Printf("  Owner: %s <%s>\n", finalName, finalEmail)
 		fmt.Printf("  Key ID: %s\n", keystore.GenerateKeyID(pubKey))
+		if metadata != nil {
+			fmt.Printf("  Used embedded metadata: Yes\n")
+		}
 		return
 	}
 
 	// If not a public key, try private
-	if _, err := keystore.LoadPrivateKey(*keyFile); err == nil {
-		dest, err := ks.ImportPrivateKey(*keyFile, *name, *email)
+	if _, err := keystore.LoadPrivateKey(tmpFile.Name()); err == nil {
+		dest, err := ks.ImportPrivateKey(tmpFile.Name(), finalName, finalEmail)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error importing private key: %v\n", err)
 			os.Exit(1)
@@ -359,8 +417,11 @@ func importCommand(keystoreDir string) {
 		}
 		fmt.Printf("Private key imported successfully:\n")
 		fmt.Printf("  File: %s\n", dest)
-		fmt.Printf("  Owner: %s <%s>\n", *name, *email)
+		fmt.Printf("  Owner: %s <%s>\n", finalName, finalEmail)
 		fmt.Printf("  Key ID: %s\n", keyID)
+		if metadata != nil {
+			fmt.Printf("  Used embedded metadata: Yes\n")
+		}
 		return
 	}
 
@@ -531,7 +592,7 @@ func exportKeyCommand(keystoreDir string) {
 		os.Exit(1)
 	}
 
-	dest, err := ks.ExportKey(resolvedKey, *out)
+	dest, err := ks.ExportKeyWithMetadata(resolvedKey, *out)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error exporting key: %v\n", err)
 		os.Exit(1)
