@@ -105,7 +105,7 @@ func printUsage() {
 	fmt.Println("  bgp list")
 	fmt.Println("  bgp -keystore ./mykeys keygen -name john -email john@example.com")
 	fmt.Println("  bgp import -key /path/to/private.pem -name alice -email alice@example.com")
-	fmt.Println("  bgp export -key alice_alice@example.com_20250920_public.pem -out /tmp/alice_pub.pem")
+	fmt.Println("  bgp export -name alice -email alice@example.com -out /tmp/alice_pub.pem")
 	fmt.Println("  bgp delete -id <KEYID>")
 	fmt.Println("  bgp delete -name alice -email alice@example.com -private")
 }
@@ -449,18 +449,25 @@ func listKeysCommand(keystoreDir string) {
 
 func exportKeyCommand(keystoreDir string) {
 	exportFlags := flag.NewFlagSet("export", flag.ExitOnError)
-	id := exportFlags.String("id", "", "Key ID to export (as shown with -v on list-keys)")
-	keyPath := exportFlags.String("key", "", "Key filename in keystore or absolute path")
+	id := exportFlags.String("id", "", "Key ID to export (as shown with -v on list)")
 	out := exportFlags.String("out", "", "Output path (empty = stdout)")
 	name := exportFlags.String("name", "", "Owner name (use with -email to select key)")
 	email := exportFlags.String("email", "", "Owner email (use with -name to select key)")
-	wantPrivate := exportFlags.Bool("private", false, "Select private key")
+	wantPrivate := exportFlags.Bool("private", false, "Export private key instead of public key")
 
 	exportFlags.Usage = func() {
-		fmt.Println("Usage: bgp export -key <keyfile> [-out <outpath>]")
+		fmt.Println("Usage: bgp export [-id <KEYID>] | [-name <name> -email <email>] [-out <outpath>] [-private]")
+		fmt.Println()
+		fmt.Println("Exports the public key by default. Use -private to export the private key instead.")
 		fmt.Println()
 		fmt.Println("Options:")
 		exportFlags.PrintDefaults()
+		fmt.Println()
+		fmt.Println("Examples:")
+		fmt.Println("  bgp export -id <KEYID>                           # Export public key by Key ID")
+		fmt.Println("  bgp export -name alice -email alice@example.com  # Export Alice's public key")
+		fmt.Println("  bgp export -name alice -email alice@example.com -private  # Export Alice's private key")
+		fmt.Println("  bgp export -id <KEYID> -out /tmp/key.pem         # Export to file")
 	}
 
 	if err := exportFlags.Parse(os.Args[2:]); err != nil {
@@ -470,29 +477,45 @@ func exportKeyCommand(keystoreDir string) {
 
 	ks := keystore.New(keystoreDir)
 
+	var resolvedKey string
+	var err error
+
 	// Resolve key by id if provided
-	resolvedKey := *keyPath
 	if *id != "" {
-		found, err := ks.FindKeyByID(*id)
+		// When using Key ID, we need to find the specific key type (private vs public)
+		// Default to public key unless -private is specified
+		keys, err := ks.CollectKeyInfo()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error finding key by id: %v\n", err)
-			os.Exit(1)
-		}
-		resolvedKey = found
-	}
-
-	// If keyPath not provided, try resolving by owner name/email and type
-	if resolvedKey == "" {
-		if *name == "" || *email == "" {
-			exportFlags.Usage()
+			fmt.Fprintf(os.Stderr, "Error reading keystore: %v\n", err)
 			os.Exit(1)
 		}
 
-		// determine requested type: default to public if neither specified
+		var matchedKey *keystore.KeyInfo
+		for _, key := range keys {
+			if key.KeyID == *id {
+				// If we want private key and this is private, or if we want public key and this is public
+				if (*wantPrivate && key.IsPrivate) || (!*wantPrivate && !key.IsPrivate) {
+					matchedKey = &key
+					break
+				}
+			}
+		}
+
+		if matchedKey == nil {
+			keyType := "public"
+			if *wantPrivate {
+				keyType = "private"
+			}
+			fmt.Fprintf(os.Stderr, "Error: no %s key found with id: %s\n", keyType, *id)
+			os.Exit(1)
+		}
+
+		resolvedKey = filepath.Join(keystoreDir, matchedKey.Filename)
+	} else if *name != "" && *email != "" {
+		// Resolve by owner name/email and type
+		// Default to public key unless -private is specified
 		priv := *wantPrivate
-		// if neither private nor public were requested, default to public (i.e. priv=false)
 
-		var err error
 		if priv {
 			resolvedKey, err = ks.GetLatestKeyForOwner(*name, *email, true)
 		} else {
@@ -502,6 +525,10 @@ func exportKeyCommand(keystoreDir string) {
 			fmt.Fprintf(os.Stderr, "Error resolving key for owner: %v\n", err)
 			os.Exit(1)
 		}
+	} else {
+		fmt.Fprintf(os.Stderr, "Error: must specify either -id or both -name and -email\n")
+		exportFlags.Usage()
+		os.Exit(1)
 	}
 
 	dest, err := ks.ExportKey(resolvedKey, *out)

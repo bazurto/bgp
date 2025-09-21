@@ -72,14 +72,14 @@ bgp import -key /path/to/private.pem -name alice -email alice@example.com
 bgp list            # list keys grouped by owner (Key IDs shown by default)
 bgp list -v         # verbose: also shows file paths
 
-# Export a key by filename or owner
-bgp export -key alice_alice@example.com_20250920_public.pem -out /tmp/alice_pub.pem
+# Export a key by Key ID
+bgp export -id <KEYID> -out /tmp/key.pem
 
 # Export the latest public key for an owner
-bgp export -name alice -email alice@example.com -public -out /tmp/alice_pub.pem
+bgp export -name alice -email alice@example.com -out /tmp/alice_pub.pem
 
-# Export by Key ID (as shown with `list -v`)
-bgp export -id <KEYID> -out /tmp/key.pem
+# Export the latest private key for an owner
+bgp export -name alice -email alice@example.com -private -out /tmp/alice_priv.pem
 
 # Delete a key
 # You can delete a key by Key ID, by filename/path, or by owner (name+email).
