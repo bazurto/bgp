@@ -628,3 +628,31 @@ func (ks *Keystore) GetLatestKeyForOwner(name, email string, wantPrivate bool) (
 
 	return filepath.Join(ks.Path, latestKey.Filename), nil
 }
+
+// MoveToTrash moves the specified file into a .trash subdirectory inside the keystore
+// and returns the new path. It creates the .trash directory if needed.
+func (ks *Keystore) MoveToTrash(srcPath string) (string, error) {
+	// Ensure keystore exists
+	if err := ks.EnsureExists(); err != nil {
+		return "", err
+	}
+
+	trashDir := filepath.Join(ks.Path, ".trash")
+	if err := os.MkdirAll(trashDir, 0700); err != nil {
+		return "", err
+	}
+
+	base := filepath.Base(srcPath)
+	dest := filepath.Join(trashDir, base)
+
+	// If destination exists, append a timestamp
+	if _, err := os.Stat(dest); err == nil {
+		dest = filepath.Join(trashDir, fmt.Sprintf("%s.%d", base, time.Now().Unix()))
+	}
+
+	if err := os.Rename(srcPath, dest); err != nil {
+		return "", err
+	}
+
+	return dest, nil
+}

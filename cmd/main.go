@@ -537,6 +537,7 @@ func deleteKeyCommand(keystoreDir string) {
 	wantPrivate := deleteFlags.Bool("private", false, "Select private key to delete")
 	wantPublic := deleteFlags.Bool("public", false, "Select public key to delete")
 	yes := deleteFlags.Bool("yes", false, "Skip confirmation prompt and delete immediately")
+	purge := deleteFlags.Bool("purge", false, "Permanently remove the file instead of moving to trash")
 
 	deleteFlags.Usage = func() {
 		fmt.Println("Usage: bgp delete [options]")
@@ -603,11 +604,21 @@ func deleteKeyCommand(keystoreDir string) {
 		}
 	}
 
-	// Attempt to remove the file
-	if err := os.Remove(resolvedKey); err != nil {
-		fmt.Fprintf(os.Stderr, "Error deleting key file: %v\n", err)
-		os.Exit(1)
+	// Delete or move to trash
+	if *purge {
+		if err := os.Remove(resolvedKey); err != nil {
+			fmt.Fprintf(os.Stderr, "Error deleting key file: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Permanently deleted: %s\n", resolvedKey)
+		return
 	}
 
-	fmt.Printf("Deleted key: %s\n", resolvedKey)
+	// Move to .trash inside keystore
+	moved, err := ks.MoveToTrash(resolvedKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error moving key to trash: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Moved to trash: %s\n", moved)
 }
