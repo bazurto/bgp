@@ -626,7 +626,7 @@ func (ks *Keystore) ExportKeyWithMetadata(keyPath, outPath string) (string, erro
 	if keyInfo.IsPrivate {
 		keyType = "PRIVATE"
 	}
-	
+
 	var metadata strings.Builder
 	metadata.WriteString("# BGP Key Export\n")
 	metadata.WriteString(fmt.Sprintf("# Name: %s\n", keyInfo.Name))
@@ -670,10 +670,10 @@ type KeyMetadata struct {
 func ParseExportedKeyMetadata(data []byte) (*KeyMetadata, []byte, error) {
 	content := string(data)
 	lines := strings.Split(content, "\n")
-	
+
 	metadata := &KeyMetadata{}
 	var keyDataStart int
-	
+
 	// Look for BGP key export header
 	if len(lines) > 0 && strings.HasPrefix(lines[0], "# BGP Key Export") {
 		for i, line := range lines {
@@ -690,14 +690,14 @@ func ParseExportedKeyMetadata(data []byte) (*KeyMetadata, []byte, error) {
 				break
 			}
 		}
-		
+
 		// Extract the PEM data (everything from -----BEGIN onwards)
 		if keyDataStart > 0 {
 			keyData := strings.Join(lines[keyDataStart:], "\n")
 			return metadata, []byte(keyData), nil
 		}
 	}
-	
+
 	// No metadata found, return original data
 	return nil, data, nil
 }

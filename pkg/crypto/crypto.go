@@ -13,6 +13,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -42,22 +44,16 @@ func NewEncryptor(ks *keystore.Keystore) *Encryptor {
 
 // EncryptMessage encrypts a message using hybrid encryption
 func (e *Encryptor) EncryptMessage(message, sender, recipient string) (*EncryptedMessage, error) {
-	// Parse sender info
-	senderName, senderEmail, err := parseSenderInfo(sender)
+	// Resolve sender identifier to find private key
+	privateKeyPath, resolvedSender, err := e.resolveSenderIdentifier(sender)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error resolving sender: %w", err)
 	}
 
-	// Find sender's latest private key
-	privateKeyPath, err := e.keystore.FindLatestPrivateKey(senderName, senderEmail)
+	// Resolve recipient identifier to find public key
+	publicKeyPath, resolvedRecipient, err := e.resolveRecipientIdentifier(recipient)
 	if err != nil {
-		return nil, fmt.Errorf("error finding sender's private key: %w", err)
-	}
-
-	// Find recipient's public key
-	recipientKeyPath, err := e.keystore.FindPublicKeyByRecipient(recipient)
-	if err != nil {
-		return nil, fmt.Errorf("error finding recipient's public key: %w", err)
+		return nil, fmt.Errorf("error resolving recipient: %w", err)
 	}
 
 	// Load keys
@@ -66,17 +62,51 @@ func (e *Encryptor) EncryptMessage(message, sender, recipient string) (*Encrypte
 		return nil, fmt.Errorf("error loading private key: %w", err)
 	}
 
-	publicKey, err := keystore.LoadPublicKey(recipientKeyPath)
+	publicKey, err := keystore.LoadPublicKey(publicKeyPath)
 	if err != nil {
 		return nil, fmt.Errorf("error loading public key: %w", err)
 	}
 
-	return encryptMessageWithKeys(message, privateKey, publicKey, sender, recipient)
+	return encryptMessageWithKeys(message, privateKey, publicKey, resolvedSender, resolvedRecipient)
 }
 
 // EncryptMessageWithKeys encrypts a message using the provided keys directly
 func EncryptMessageWithKeys(message string, senderPrivateKey, recipientPublicKey interface{}, sender, recipient string) (*EncryptedMessage, error) {
 	return encryptMessageWithKeys(message, senderPrivateKey, recipientPublicKey, sender, recipient)
+}
+
+// EncryptOnlyMessage encrypts a message for a recipient without signing (no sender required)
+func (e *Encryptor) EncryptOnlyMessage(message, recipient string) (*EncryptedMessage, error) {
+	// Resolve recipient identifier to find public key
+	publicKeyPath, resolvedRecipient, err := e.resolveRecipientIdentifier(recipient)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving recipient: %w", err)
+	}
+
+	// Load recipient's public key
+	publicKey, err := keystore.LoadPublicKey(publicKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("error loading public key: %w", err)
+	}
+
+	return encryptOnlyWithKey(message, publicKey, resolvedRecipient)
+}
+
+// SignOnlyMessage signs a message without encryption (no recipient required)
+func (e *Encryptor) SignOnlyMessage(message, sender string) (*EncryptedMessage, error) {
+	// Resolve sender identifier to find private key
+	privateKeyPath, resolvedSender, err := e.resolveSenderIdentifier(sender)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving sender: %w", err)
+	}
+
+	// Load sender's private key
+	privateKey, err := keystore.LoadPrivateKey(privateKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("error loading private key: %w", err)
+	}
+
+	return signOnlyWithKey(message, privateKey, resolvedSender)
 }
 
 func encryptMessageWithKeys(message string, senderPrivateKey, recipientPublicKey interface{}, sender, recipient string) (*EncryptedMessage, error) {
@@ -133,6 +163,77 @@ func encryptMessageWithKeys(message string, senderPrivateKey, recipientPublicKey
 		Ciphertext: base64.StdEncoding.EncodeToString(combinedCiphertext),
 		Signature:  base64.StdEncoding.EncodeToString(signature),
 		Algorithm:  "RSA-OAEP+AES-GCM",
+	}, nil
+}
+
+// encryptOnlyWithKey encrypts a message for a recipient without signing
+func encryptOnlyWithKey(message string, recipientPublicKey interface{}, recipient string) (*EncryptedMessage, error) {
+	// Generate a random AES key
+	aesKey := make([]byte, 32) // 256-bit key
+	if _, err := rand.Read(aesKey); err != nil {
+		return nil, fmt.Errorf("failed to generate AES key: %w", err)
+	}
+
+	// Encrypt the message with AES
+	block, err := aes.NewCipher(aesKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AES cipher: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create GCM: %w", err)
+	}
+
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, fmt.Errorf("failed to generate nonce: %w", err)
+	}
+
+	ciphertext := gcm.Seal(nonce, nonce, []byte(message), nil)
+
+	// Encrypt the AES key with recipient's public key
+	var encryptedAESKey []byte
+	switch pubKey := recipientPublicKey.(type) {
+	case *rsa.PublicKey:
+		encryptedAESKey, err = rsa.EncryptOAEP(sha256.New(), rand.Reader, pubKey, aesKey, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt AES key with RSA: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported public key type for encryption")
+	}
+
+	// Combine encrypted AES key and ciphertext
+	combinedCiphertext := append(encryptedAESKey, ciphertext...)
+
+	return &EncryptedMessage{
+		Recipient:  recipient,
+		Sender:     "", // No sender for encrypt-only
+		KeyID:      keystore.GenerateKeyID(recipientPublicKey),
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Ciphertext: base64.StdEncoding.EncodeToString(combinedCiphertext),
+		Signature:  "", // No signature for encrypt-only
+		Algorithm:  "RSA-OAEP+AES-GCM",
+	}, nil
+}
+
+// signOnlyWithKey signs a message without encryption
+func signOnlyWithKey(message string, senderPrivateKey interface{}, sender string) (*EncryptedMessage, error) {
+	// Sign the message directly
+	signature, err := signMessage([]byte(message), senderPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign message: %w", err)
+	}
+
+	return &EncryptedMessage{
+		Recipient:  "", // No recipient for sign-only
+		Sender:     sender,
+		KeyID:      "", // No recipient key ID for sign-only
+		Timestamp:  time.Now().UTC().Format(time.RFC3339),
+		Ciphertext: base64.StdEncoding.EncodeToString([]byte(message)), // Store plain message as base64
+		Signature:  base64.StdEncoding.EncodeToString(signature),
+		Algorithm:  "Sign-Only",
 	}, nil
 }
 
@@ -262,6 +363,114 @@ func (em *EncryptedMessage) ToJSON() ([]byte, error) {
 }
 
 // Helper functions
+
+// resolveSenderIdentifier resolves a sender identifier (name@email, key ID, or name) to find the private key
+func (e *Encryptor) resolveSenderIdentifier(identifier string) (privateKeyPath string, resolvedSender string, err error) {
+	// First try to parse as name@email format
+	if strings.Contains(identifier, "@") {
+		name, email, parseErr := parseSenderInfo(identifier)
+		if parseErr == nil {
+			keyPath, findErr := e.keystore.FindLatestPrivateKey(name, email)
+			if findErr == nil {
+				return keyPath, identifier, nil
+			}
+		}
+	}
+
+	// Try as key ID
+	if len(identifier) >= 8 { // Key IDs are typically longer
+		keyPath, err := e.keystore.FindKeyByID(identifier)
+		if err == nil {
+			// Verify it's a private key
+			if strings.Contains(keyPath, "private") {
+				// Extract name and email from filename to construct sender
+				filename := filepath.Base(keyPath)
+				keyInfo, parseErr := keystore.ParseKeyFilename(filename)
+				if parseErr == nil {
+					resolvedSender := keyInfo.Name + "@" + keyInfo.Email
+					return keyPath, resolvedSender, nil
+				}
+			}
+		}
+	}
+
+	// Try as name (find any private key for this name)
+	keys, err := e.keystore.CollectKeyInfo()
+	if err != nil {
+		return "", "", fmt.Errorf("error listing keys: %w", err)
+	}
+
+	var matchingKeys []keystore.KeyInfo
+	for _, key := range keys {
+		if key.IsPrivate && (key.Name == identifier || key.Email == identifier) {
+			matchingKeys = append(matchingKeys, key)
+		}
+	}
+
+	if len(matchingKeys) == 0 {
+		return "", "", fmt.Errorf("no private key found for identifier: %s", identifier)
+	}
+
+	// Use the most recent key
+	var latestKey *keystore.KeyInfo
+	for _, key := range matchingKeys {
+		if latestKey == nil || key.Date > latestKey.Date {
+			latestKey = &key
+		}
+	}
+
+	keyPath := filepath.Join(e.keystore.Path, latestKey.Filename)
+	resolvedSender = latestKey.Name + "@" + latestKey.Email
+	return keyPath, resolvedSender, nil
+}
+
+// resolveRecipientIdentifier resolves a recipient identifier (name, email, or key ID) to find the public key
+func (e *Encryptor) resolveRecipientIdentifier(identifier string) (publicKeyPath string, resolvedRecipient string, err error) {
+	// Try as key ID first
+	if len(identifier) >= 8 {
+		keyPath, err := e.keystore.FindKeyByID(identifier)
+		if err == nil {
+			// Verify it's a public key
+			if strings.Contains(keyPath, "public") {
+				// Extract name and email from filename
+				filename := filepath.Base(keyPath)
+				keyInfo, parseErr := keystore.ParseKeyFilename(filename)
+				if parseErr == nil {
+					resolvedRecipient := keyInfo.Name + "@" + keyInfo.Email
+					return keyPath, resolvedRecipient, nil
+				}
+			} else {
+				// It's a private key, find corresponding public key
+				filename := filepath.Base(keyPath)
+				publicFilename := strings.Replace(filename, "private", "public", 1)
+				publicKeyPath := filepath.Join(e.keystore.Path, publicFilename)
+				if _, err := os.Stat(publicKeyPath); err == nil {
+					keyInfo, parseErr := keystore.ParseKeyFilename(publicFilename)
+					if parseErr == nil {
+						resolvedRecipient := keyInfo.Name + "@" + keyInfo.Email
+						return publicKeyPath, resolvedRecipient, nil
+					}
+				}
+			}
+		}
+	}
+
+	// Try existing recipient search (name or email in filename)
+	keyPath, err := e.keystore.FindPublicKeyByRecipient(identifier)
+	if err == nil {
+		// Extract recipient info from filename
+		filename := filepath.Base(keyPath)
+		keyInfo, parseErr := keystore.ParseKeyFilename(filename)
+		if parseErr == nil {
+			resolvedRecipient := keyInfo.Name + "@" + keyInfo.Email
+			return keyPath, resolvedRecipient, nil
+		}
+		// Fallback to original identifier
+		return keyPath, identifier, nil
+	}
+
+	return "", "", fmt.Errorf("no public key found for identifier: %s", identifier)
+}
 
 func parseSenderInfo(sender string) (name, email string, err error) {
 	parts := strings.SplitN(sender, "@", 2)

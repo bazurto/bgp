@@ -101,7 +101,9 @@ func printUsage() {
 	fmt.Println("Use 'bgp <command> -h' for command-specific help")
 	fmt.Println()
 	fmt.Println("Examples:")
-	fmt.Println("  bgp -keystore /path/to/keys encrypt -to alice -message 'Hello' -from bob@test.com")
+	fmt.Println("  bgp -keystore /path/to/keys encrypt -to alice -message 'Hello' -from bob@test.com  # Sign and encrypt")
+	fmt.Println("  bgp -keystore /path/to/keys encrypt -to alice -message 'Hello'                     # Encrypt only")
+	fmt.Println("  bgp -keystore /path/to/keys encrypt -from bob@test.com -message 'Hello'            # Sign only")
 	fmt.Println("  bgp list")
 	fmt.Println("  bgp -keystore ./mykeys keygen -name john -email john@example.com")
 	fmt.Println("  bgp import -key exported_key.pem                    # Use embedded metadata")
@@ -112,19 +114,30 @@ func printUsage() {
 
 func encryptCommand(keystoreDir string) {
 	encryptFlags := flag.NewFlagSet("encrypt", flag.ExitOnError)
-	recipient := encryptFlags.String("to", "", "Recipient identifier (name or email)")
+	recipient := encryptFlags.String("to", "", "Recipient identifier (name, email, or key ID)")
 	message := encryptFlags.String("message", "", "Message to encrypt")
-	sender := encryptFlags.String("from", "", "Sender identifier (name@email)")
+	sender := encryptFlags.String("from", "", "Sender identifier (name@email, name, email, or key ID)")
 
 	encryptFlags.Usage = func() {
-		fmt.Println("Usage: bgp encrypt -to <recipient> -message <message> -from <sender>")
+		fmt.Println("Usage: bgp encrypt [-to <recipient>] [-from <sender>] [-message <message>]")
+		fmt.Println()
+		fmt.Println("At least one of -to or -from must be provided:")
+		fmt.Println("  -to only     : Encrypt message for recipient (no signing)")
+		fmt.Println("  -from only   : Sign message with sender key (no encryption)")
+		fmt.Println("  -to & -from  : Both encrypt for recipient and sign with sender")
 		fmt.Println()
 		fmt.Println("Options:")
 		encryptFlags.PrintDefaults()
 		fmt.Println()
 		fmt.Println("Examples:")
-		fmt.Println("  bgp encrypt -to john@example.com -message 'Hello World' -from myname@example.com")
-		fmt.Println("  echo 'Secret message' | bgp encrypt -to alice -from bob@company.com")
+		fmt.Println("  bgp encrypt -to john@example.com -message 'Hello World' -from myname@example.com  # Sign and encrypt")
+		fmt.Println("  bgp encrypt -to alice -message 'Secret data'                                      # Encrypt only (by name)")
+		fmt.Println("  bgp encrypt -to alice@example.com -message 'Secret data'                         # Encrypt only (by email)")
+		fmt.Println("  bgp encrypt -to 420c338469ddc6c0 -message 'Secret data'                          # Encrypt only (by key ID)")
+		fmt.Println("  bgp encrypt -from bob@company.com -message 'Signed message'                       # Sign only (by name@email)")
+		fmt.Println("  bgp encrypt -from bob -message 'Signed message'                                   # Sign only (by name)")
+		fmt.Println("  bgp encrypt -from 420c338469ddc6c0 -message 'Signed message'                      # Sign only (by key ID)")
+		fmt.Println("  echo 'Secret message' | bgp encrypt -to alice -from bob@company.com               # From stdin")
 	}
 
 	if err := encryptFlags.Parse(os.Args[2:]); err != nil {
@@ -132,7 +145,9 @@ func encryptCommand(keystoreDir string) {
 		os.Exit(1)
 	}
 
-	if *recipient == "" || *sender == "" {
+	// Require at least one of -from or -to flags
+	if *recipient == "" && *sender == "" {
+		fmt.Fprintf(os.Stderr, "Error: At least one of -from or -to flags must be provided\n")
 		encryptFlags.Usage()
 		os.Exit(1)
 	}
@@ -160,10 +175,23 @@ func encryptCommand(keystoreDir string) {
 	ks := keystore.New(keystoreDir)
 	encryptor := crypto.NewEncryptor(ks)
 
-	// Encrypt the message
-	encryptedMsg, err := encryptor.EncryptMessage(messageText, *sender, *recipient)
+	// Encrypt the message based on available flags
+	var encryptedMsg *crypto.EncryptedMessage
+	var err error
+
+	if *sender != "" && *recipient != "" {
+		// Both flags provided: sign and encrypt
+		encryptedMsg, err = encryptor.EncryptMessage(messageText, *sender, *recipient)
+	} else if *recipient != "" {
+		// Only recipient provided: encrypt-only (no signing)
+		encryptedMsg, err = encryptor.EncryptOnlyMessage(messageText, *recipient)
+	} else {
+		// Only sender provided: sign-only (no encryption)
+		encryptedMsg, err = encryptor.SignOnlyMessage(messageText, *sender)
+	}
+
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error encrypting message: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error processing message: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -346,7 +374,7 @@ func importCommand(keystoreDir string) {
 	// Determine final name and email
 	finalName := *name
 	finalEmail := *email
-	
+
 	if metadata != nil {
 		if finalName == "" {
 			finalName = metadata.Name
@@ -370,7 +398,7 @@ func importCommand(keystoreDir string) {
 		os.Exit(1)
 	}
 	defer os.Remove(tmpFile.Name())
-	
+
 	if _, err := tmpFile.Write(cleanKeyData); err != nil {
 		tmpFile.Close()
 		fmt.Fprintf(os.Stderr, "Error writing temporary file: %v\n", err)
