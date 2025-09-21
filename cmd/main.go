@@ -71,6 +71,9 @@ func main() {
 		exportKeyCommand(keystoreDir)
 	case "list":
 		listKeysCommand(keystoreDir)
+	case "list-keys":
+		fmt.Fprintln(os.Stderr, "Warning: 'list-keys' is deprecated; use 'list' instead")
+		listKeysCommand(keystoreDir)
 	case "delete":
 		deleteKeyCommand(keystoreDir)
 	default:
@@ -427,35 +430,7 @@ func listKeysCommand(keystoreDir string) {
 	}
 }
 
-func importPrivateCommand(keystoreDir string) {
-	importFlags := flag.NewFlagSet("import-private", flag.ExitOnError)
-	keyFile := importFlags.String("key", "", "Path to private key file to import")
-	name := importFlags.String("name", "", "Name for the key owner")
-	email := importFlags.String("email", "", "Email for the key owner")
-
-	importFlags.Usage = func() {
-		fmt.Println("Usage: bgp import-private -key <keyfile> -name <name> -email <email>")
-		fmt.Println()
-		fmt.Println("Options:")
-		importFlags.PrintDefaults()
-	}
-
-	importFlags.Parse(os.Args[2:])
-
-	if *keyFile == "" || *name == "" || *email == "" {
-		importFlags.Usage()
-		os.Exit(1)
-	}
-
-	ks := keystore.New(keystoreDir)
-	dest, err := ks.ImportPrivateKey(*keyFile, *name, *email)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error importing private key: %v\n", err)
-		os.Exit(1)
-	}
-
-	fmt.Printf("Private key imported: %s\n", dest)
-}
+// ...existing code...
 
 func exportKeyCommand(keystoreDir string) {
 	exportFlags := flag.NewFlagSet("export", flag.ExitOnError)
