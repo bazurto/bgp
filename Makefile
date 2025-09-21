@@ -91,7 +91,9 @@ deps:
 # Installation target
 install:
 	@echo "Installing bgp CLI tool..."
-	go install ./cmd
+	# Build the CLI and install to GOBIN, GOPATH/bin or /usr/local/bin
+	go build -trimpath -o bgp ./cmd
+	@sh -c 'GOPATH=$$(go env GOPATH); if [ -n "$$GOPATH" ]; then mkdir -p "$$GOPATH/bin" && mv bgp "$$GOPATH/bin" && echo "Installed bgp to $$GOPATH/bin"; else sudo mv bgp /usr/local/bin && echo "Installed bgp to /usr/local/bin"; fi'
 
 # Demo and example targets
 run-example: build-examples
