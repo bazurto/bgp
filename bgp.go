@@ -5,6 +5,8 @@
 package bgp
 
 import (
+	"os"
+
 	"github.com/bazurto/bgp/pkg/crypto"
 	"github.com/bazurto/bgp/pkg/keystore"
 )
@@ -66,7 +68,11 @@ func (c *Client) ImportPublicKey(keyFile, name, email string) (string, error) {
 
 // ListKeys returns information about all keys in the keystore
 func (c *Client) ListKeys() ([]keystore.KeyInfo, error) {
-	return c.keystore.CollectKeyInfo()
+	keys, err := c.keystore.CollectKeyInfo()
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	return keys, nil
 }
 
 // GetKeystore returns the underlying keystore for advanced operations
