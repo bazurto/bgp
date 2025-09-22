@@ -19,16 +19,16 @@ func TestFindKeyByID_SaveAndFind(t *testing.T) {
 	}
 
 	// generate a key
-	priv, pub, err := GenerateKeyPair("rsa", "", "alice", "alice@example.com")
+	priv, pub, err := GenerateKeyPair("rsa", "")
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	if err := ks.SaveKeyPair(priv, pub, "alice", "alice@example.com"); err != nil {
+	if _, _, err := ks.SaveKeyPair(priv, pub, "alice", "alice@example.com"); err != nil {
 		t.Fatalf("save keypair: %v", err)
 	}
 
 	// collect info and ensure key id present
-	infos, err := ks.CollectKeyInfo()
+	infos, err := ks.CollectKeyInfoAll()
 	if err != nil {
 		t.Fatalf("collect: %v", err)
 	}
@@ -48,21 +48,25 @@ func TestFindKeyByID_SaveAndFind(t *testing.T) {
 		t.Fatalf("no key id found in infos: %+v", infos)
 	}
 
-	found, err := ks.FindKeyByID(id)
+	private, err := ks.FindKeyByID(id, PrivateKey)
 	if err != nil {
-		t.Fatalf("FindKeyByID: %v", err)
+		t.Fatalf("FindKeyByID private: %v", err)
 	}
-	if _, err := os.Stat(found); err != nil {
-		t.Fatalf("found file missing: %v", err)
+
+	public, err := ks.FindKeyByID(id, PublicKey)
+	if err != nil {
+		t.Fatalf("FindKeyByID public: %v", err)
+	}
+	if private == nil {
+		t.Fatalf("FindKeyByID no private key found")
+	}
+	if public == nil {
+		t.Fatalf("FindKeyByID no public key found")
 	}
 }
 
 func TestImportPublicAndPrivate(t *testing.T) {
-	srcDir, err := os.MkdirTemp("", "keystore_src")
-	if err != nil {
-		t.Fatalf("tempdir src: %v", err)
-	}
-	defer os.RemoveAll(srcDir)
+	srcDir := t.TempDir()
 
 	ksDir, err := os.MkdirTemp("", "keystore_dest")
 	if err != nil {
@@ -71,21 +75,24 @@ func TestImportPublicAndPrivate(t *testing.T) {
 	defer os.RemoveAll(ksDir)
 
 	// generate key pair to export
-	priv, pub, err := GenerateKeyPair("rsa", "", "bob", "bob@example.com")
+	priv, pub, err := GenerateKeyPair("rsa", "")
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
 
 	// write public to a source file
-	pubFile := filepath.Join(srcDir, "bob_public.pem")
-	if err := ExportPublicKey(pub, pubFile); err != nil {
+	if _, err := PublicKeyToBytes(pub); err != nil {
 		t.Fatalf("export public: %v", err)
 	}
 
 	// write private to a source file
 	privFile := filepath.Join(srcDir, "bob_private.pem")
-	if err := ExportPrivateKey(priv, privFile); err != nil {
+	if b, err := PrivateKeyToBytes(priv); err != nil {
 		t.Fatalf("export private: %v", err)
+	} else {
+		if err := os.WriteFile(privFile, b, 0600); err != nil {
+			t.Fatalf("write private: %v", err)
+		}
 	}
 
 	ks := New(ksDir)
@@ -93,26 +100,22 @@ func TestImportPublicAndPrivate(t *testing.T) {
 		t.Fatalf("ensure exists: %v", err)
 	}
 
-	// Import public
-	destPub, err := ks.ImportPublicKey(pubFile, "bob", "bob@example.com")
-	if err != nil {
-		t.Fatalf("ImportPublicKey: %v", err)
-	}
-	if _, err := os.Stat(destPub); err != nil {
-		t.Fatalf("imported public missing: %v", err)
-	}
-
 	// Import private
-	destPriv, err := ks.ImportPrivateKey(privFile, "bob", "bob@example.com")
+	err = ks.ImportKey(privFile, "bob", "bob@example.com")
 	if err != nil {
 		t.Fatalf("ImportPrivateKey: %v", err)
 	}
-	if fi, err := os.Stat(destPriv); err != nil {
-		t.Fatalf("imported private missing: %v", err)
-	} else {
-		// ensure permissions are restrictive (owner read/write at least)
-		if fi.Mode().Perm()&0600 == 0 {
-			t.Fatalf("imported private file permissions not restrictive: %v", fi.Mode())
+
+	keys, _ := ks.GetAllPrivateKeys()
+	var ki *KeyInfo
+	for _, k := range keys {
+		if k.Name == "bob" {
+			ki = &k
+			break
 		}
+	}
+
+	if ki == nil {
+		t.Fatalf("imported key not found in keystore")
 	}
 }

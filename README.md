@@ -8,9 +8,12 @@ A Go library and CLI tool for secure message encryption and decryption with key 
 ## Features
 
 - **Hybrid Encryption**: RSA-OAEP + AES-GCM for secure and efficient encryption
+- **Digital Signatures**: Sign messages for authentication and integrity verification
+- **Flexible Operations**: Support for encrypt-only, sign-only, and combined sign+encrypt modes
 - **Key Management**: Automatic key generation, import, and rotation support
+- **Multiple Algorithms**: Support for RSA and Elliptic Curve (EC) key generation
 - **CLI Tool**: Full-featured command-line interface
-- **Library API**: Easy-to-use Go library for integration into other projects
+- **Library API**: Command functions for integration into other Go projects
 - **Key Rotation**: Automatic use of latest keys for encryption, all keys tried for decryption
 - **Multiple Recipients**: Support for multiple public keys in keystore
 
@@ -24,12 +27,17 @@ A Go library and CLI tool for secure message encryption and decryption with key 
 │   ├── crypto/           # Encryption/decryption operations
 │   │   └── crypto.go
 │   └── keystore/         # Key management and storage
-│       └── keystore.go
-├── examples/             # Usage examples
-│   └── library/         # Library usage example
-│       └── main.go
-├── bgp.go                # High-level library API
+│       ├── keystore.go
+│       └── keystore_test.go
+├── integration/          # Integration tests
+│   └── integration_test.go
+├── bgp.go                # High-level command functions
+├── bgp_test.go           # Unit tests
+├── scripts/              # Helper scripts
+│   └── demo.sh
 ├── go.mod
+├── go.sum
+├── Makefile
 └── README.md
 ```
 
@@ -63,6 +71,7 @@ bgp -keystore /path/to/keys <command> [options]
 ```bash
 # Generate a new key pair
 bgp keygen -name alice -email alice@example.com
+bgp keygen -name bob -email bob@example.com -alg ec -curve P-384  # EC key
 
 # Import a key (public or private). The program will auto-detect key type.
 bgp import -key /path/to/public.pem -name bob -email bob@example.com
@@ -70,7 +79,6 @@ bgp import -key /path/to/private.pem -name alice -email alice@example.com
 
 # List keys
 bgp list            # list keys grouped by owner (Key IDs shown by default)
-bgp list -v         # verbose: also shows file paths
 
 # Export a key by Key ID
 bgp export -id <KEYID> -out /tmp/key.pem
@@ -82,16 +90,28 @@ bgp export -name alice -email alice@example.com -out /tmp/alice_pub.pem
 bgp export -name alice -email alice@example.com -private -out /tmp/alice_priv.pem
 
 # Delete a key
-# You can delete a key by Key ID, by filename/path, or by owner (name+email).
-# The command will prompt for confirmation unless you pass `-yes`.
 bgp delete -id <KEYID>
 bgp delete -name alice -email alice@example.com -private
-bgp delete -key alice_alice@example.com_20250920_private.pem
 
-# Encrypt / Decrypt
-bgp encrypt -to alice -message "Hello" -from bob@example.com
-bgp decrypt < encrypted_message.json
+# Encrypt, Sign, or Both
+bgp encrypt -to alice -message "Hello" -from bob@example.com     # Sign and encrypt
+bgp encrypt -to alice -message "Secret data"                    # Encrypt only
+bgp encrypt -from bob@example.com -message "Signed message"     # Sign only
+
+# Decrypt or verify
+bgp decrypt < encrypted_message.json    # Decrypt an encrypted message
+bgp decrypt < signed_message.json       # Verify a signed message
 ```
+
+### Encryption and Signing Modes
+
+BGP supports three different operation modes:
+
+1. **Encrypt + Sign** (`-to` and `-from`): Encrypts the message for the recipient and signs it with the sender's private key
+2. **Encrypt Only** (`-to` only): Encrypts the message for the recipient without signing
+3. **Sign Only** (`-from` only): Signs the message with the sender's private key without encryption
+
+The `decrypt` command automatically detects the message type and performs the appropriate operation (decrypt, verify signature, or both).
 
 ### Notes on Key IDs
 
@@ -100,46 +120,62 @@ bgp decrypt < encrypted_message.json
 
 ## Library Usage
 
+The BGP package provides command functions that can be imported and used programmatically:
+
 ```go
 import (
     "fmt"
     "log"
+    "strings"
     "github.com/bazurto/bgp"
+    "github.com/bazurto/bgp/pkg/keystore"
 )
 
 func main() {
-    // Create a client with default keystore path (~/.bgp/keystore)
-    client := bgp.NewClientWithDefaultPath()
-    
-    // Or create a client with custom keystore path
-    // client := bgp.NewClient("./keystore")
+    keystoreDir := "./keystore"
     
     // Generate key pairs
-    err := client.GenerateKeyPair("rsa", "", "alice", "alice@example.com")
+    _, _, err := bgp.KeygenCommand(keystoreDir, bgp.KeygenArgs{
+        Name: "alice",
+        Email: "alice@example.com",
+        Algorithm: keystore.RSAAlgorithm,
+        Curve: keystore.CurveP256,
+    })
     if err != nil {
         log.Fatal(err)
     }
     
-    err = client.GenerateKeyPair("rsa", "", "bob", "bob@example.com")
+    _, _, err = bgp.KeygenCommand(keystoreDir, bgp.KeygenArgs{
+        Name: "bob", 
+        Email: "bob@example.com",
+        Algorithm: keystore.RSAAlgorithm,
+        Curve: keystore.CurveP256,
+    })
     if err != nil {
         log.Fatal(err)
     }
     
-    // Encrypt a message
+    // Encrypt and sign a message
     message := "Hello Bob, this is Alice!"
-    encrypted, err := client.Encrypt(message, "alice@example.com", "bob@example.com")
+    encrypted, err := bgp.EncryptCommand(keystoreDir, bgp.EncryptArgs{
+        To: "bob@example.com",
+        From: "alice@example.com", 
+        Msg: message,
+    })
     if err != nil {
         log.Fatal(err)
     }
     
     // Decrypt the message
-    decrypted, err := client.Decrypt(encrypted)
+    reader := strings.NewReader(encrypted)
+    decrypted, verified, err := bgp.DecryptCommand(keystoreDir, reader)
     if err != nil {
         log.Fatal(err)
     }
     
     fmt.Printf("Original: %s\n", message)
     fmt.Printf("Decrypted: %s\n", decrypted)
+    fmt.Printf("Signature verified: %t\n", verified)
 }
 ```
 
@@ -152,17 +188,13 @@ Keys are stored in PEM format using the naming convention:
 
 Private key files are written with restrictive permissions (0600). Public keys are written with 0644.
 
-## Examples
-
-See `examples/library/` for a small program that demonstrates generating keys, encrypting and decrypting.
-
 ## Building and Testing
 
 Recommended (Makefile targets):
 
 ```bash
-make build   # build CLI and examples
-make test    # run tests (if present)
+make build   # build CLI tool
+make test    # run unit and integration tests
 make demo    # run a demo sequence
 ```
 
@@ -170,8 +202,7 @@ Manual:
 
 ```bash
 go build -o bgp ./cmd
-cd examples/library && go build -o library_example
-./library_example
+go test ./...
 ```
 
 ## Quick Demo (Example Output)

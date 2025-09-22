@@ -3,7 +3,7 @@
 
 # Makefile for BGP - Cryptographic Library and CLI Tool
 
-.PHONY: help build build-cli build-examples clean test fmt vet install deps run-example lint all goimports integration-test ci
+.PHONY: help build build-cli clean test fmt vet install deps lint all goimports integration-test ci
 
 # Default target
 all: clean fmt vet test build
@@ -12,9 +12,8 @@ all: clean fmt vet test build
 help:
 	@echo "Available targets:"
 	@echo "  all          - Run clean, fmt, vet, test, and build"
-	@echo "  build        - Build both CLI and examples"
+	@echo "  build        - Build both CLI"
 	@echo "  build-cli    - Build the CLI tool"
-	@echo "  build-examples - Build example programs"
 	@echo "  clean        - Remove built binaries and temporary files"
 	@echo "  test         - Run tests"
 	@echo "  fmt          - Format Go code"
@@ -22,25 +21,20 @@ help:
 	@echo "  lint         - Run golangci-lint (if available)"
 	@echo "  deps         - Download and tidy dependencies"
 	@echo "  install      - Install CLI tool to GOPATH/bin"
-	@echo "  run-example  - Run the library example"
 	@echo "  demo         - Run a quick demo of the CLI"
 
 # Build targets
-build: build-cli build-examples
+build: build-cli
 
 build-cli:
 	@echo "Building CLI tool..."
 	go build -o bgp ./cmd
 
-build-examples:
-	@echo "Building examples..."
-	cd examples/library && go build -o library_example
 
 # Clean target
 clean:
 	@echo "Cleaning up..."
 	rm -f bgp
-	rm -f examples/library/library_example
 	rm -f encrypted_message.json
 	go clean
 
@@ -74,7 +68,6 @@ lint:
 
 integration-test:
 	@echo "Running integration tests (builds binary and runs integration package tests)..."
-	@# Ensure example binary and CLI build succeed
 	go build -o bgp ./cmd
 	go test ./integration -run TestEndToEnd -v
 
@@ -95,10 +88,6 @@ install:
 	go build -trimpath -o bgp ./cmd
 	@sh -c 'GOPATH=$$(go env GOPATH); if [ -n "$$GOPATH" ]; then mkdir -p "$$GOPATH/bin" && mv bgp "$$GOPATH/bin" && echo "Installed bgp to $$GOPATH/bin"; else sudo mv bgp /usr/local/bin && echo "Installed bgp to /usr/local/bin"; fi'
 
-# Demo and example targets
-run-example: build-examples
-	@echo "Running library example..."
-	cd examples/library && ./library_example
 
 demo: build-cli
 	@echo "Running CLI demo..."
@@ -106,10 +95,10 @@ demo: build-cli
 	@./bgp keygen -name demo -email demo@example.com
 	@echo ""
 	@echo "2. Listing keys..."
-	@./bgp list-keys
+	@./bgp list
 	@echo ""
 	@echo "3. Encrypting and decrypting a message..."
-	@echo "Hello from Makefile demo!" | ./bgp encrypt -to demo -from demo@demo@example.com | ./bgp decrypt
+	@echo "Hello from Makefile demo!" | ./bgp encrypt -to demo -from demo@example.com | ./bgp decrypt
 	@echo ""
 	@echo "Demo complete! Keys are stored in ~/.bgp/keystore"
 
@@ -132,5 +121,5 @@ quick:
 	go build -o bgp ./cmd
 
 # Check everything is working
-check: build test run-example
+check: build test
 	@echo "All checks passed!"

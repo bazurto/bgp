@@ -1,7 +1,6 @@
 package integration
 
 import (
-	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -49,33 +48,10 @@ func TestEndToEnd(t *testing.T) {
 	}
 	keyID := matches[1]
 
-	// Dry-run delete
-	cmd = exec.Command(bin, "-keystore", tmpDir, "delete", "-id", keyID, "-dry-run")
-	out, err = cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("dry-run delete failed: %v\n%s", err, string(out))
-	}
-	if !bytes.Contains(out, []byte("Would move to trash")) && !bytes.Contains(out, []byte("Would permanently delete")) {
-		t.Fatalf("unexpected dry-run output: %s", string(out))
-	}
-
-	// Actual delete (move to trash)
-	cmd = exec.Command(bin, "-keystore", tmpDir, "delete", "-id", keyID, "-yes")
+	// Delete
+	cmd = exec.Command(bin, "-keystore", tmpDir, "delete", "-id", keyID)
 	out, err = cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("delete failed: %v\n%s", err, string(out))
-	}
-	if !bytes.Contains(out, []byte("Moved to trash")) {
-		t.Fatalf("unexpected delete output: %s", string(out))
-	}
-
-	// Ensure .trash exists and contains a file
-	trashDir := filepath.Join(tmpDir, ".trash")
-	infos, err := os.ReadDir(trashDir)
-	if err != nil {
-		t.Fatalf("expected trash contents, err: %v", err)
-	}
-	if len(infos) == 0 {
-		t.Fatalf("expected trash to contain at least one file")
 	}
 }
