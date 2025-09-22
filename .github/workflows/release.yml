@@ -1,0 +1,121 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25.1'
+
+      - name: Build binaries
+        run: |
+          # Build for multiple platforms
+          GOOS=linux GOARCH=amd64 go build -o bgp-linux-amd64 ./cmd
+          GOOS=linux GOARCH=arm64 go build -o bgp-linux-arm64 ./cmd
+          GOOS=darwin GOARCH=amd64 go build -o bgp-darwin-amd64 ./cmd
+          GOOS=darwin GOARCH=arm64 go build -o bgp-darwin-arm64 ./cmd
+          GOOS=windows GOARCH=amd64 go build -o bgp-windows-amd64.exe ./cmd
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+          
+          # Generate changelog
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "## Changes" >> $GITHUB_OUTPUT
+          git log --pretty=format:"- %s" $PREV_TAG..HEAD >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: BGP ${{ github.ref_name }}
+          body: |
+            # BGP ${{ github.ref_name }}
+            
+            A Go library and CLI tool for secure message encryption and decryption with key management.
+            
+            ${{ steps.changelog.outputs.CHANGELOG }}
+            
+            ## Installation
+            
+            Download the appropriate binary for your platform from the assets below, or install from source:
+            
+            ```bash
+            go install github.com/bazurto/bgp/cmd@${{ github.ref_name }}
+            ```
+          draft: false
+          prerelease: false
+
+      - name: Upload Linux AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./bgp-linux-amd64
+          asset_name: bgp-linux-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Linux ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./bgp-linux-arm64
+          asset_name: bgp-linux-arm64
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./bgp-darwin-amd64
+          asset_name: bgp-darwin-amd64
+          asset_content_type: application/octet-stream
+
+      - name: Upload macOS ARM64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./bgp-darwin-arm64
+          asset_name: bgp-darwin-arm64
+          asset_content_type: application/octet-stream
+
+      - name: Upload Windows AMD64
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./bgp-windows-amd64.exe
+          asset_name: bgp-windows-amd64.exe
+          asset_content_type: application/octet-stream
